@@ -5,3 +5,4 @@ venv*
 core/__pycache__*
 llm/__pycache__*
 storage/
+Travel Assistant Project Structure.md
