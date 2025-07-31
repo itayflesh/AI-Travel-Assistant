@@ -12,7 +12,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from llm.gemini_client import GeminiClient
 from core.query_classifier import QueryClassifier
-from core.redis_storage import SmartRedisStorage
+from core.redis_storage import GlobalContextStorage  
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 # Page configuration
 st.set_page_config(
-    page_title="Travel Assistant - Navan Assignment",
+    page_title="Smart Travel Assistant - Navan Assignment",
     page_icon="✈️",
     layout="centered"
 )
@@ -28,15 +28,15 @@ st.set_page_config(
 # Initialize components with proper error handling
 @st.cache_resource
 def init_components():
-    """Initialize Smart Redis storage, Gemini client, and query classifier"""
+    """Initialize Global Context Storage, Gemini client, and query classifier"""
     try:
-        # Initialize Smart Redis storage
-        storage = SmartRedisStorage()
+        # Initialize Global Context Storage (NEW!)
+        storage = GlobalContextStorage()
         
         # Test Redis connection
         try:
             storage.redis_client.ping()
-            st.success("✅ Smart Redis storage connection successful")
+            st.success("✅ Global Context Storage connection successful")
         except Exception as e:
             st.error(f"❌ Redis connection failed: {str(e)}")
             st.error("Make sure Redis is running and REDIS_URL is configured correctly")
@@ -61,34 +61,17 @@ def init_components():
         st.error(f"❌ Initialization error: {str(e)}")
         return None, None, None
 
-def extract_and_store_key_information(storage, query_type, key_information):
+def build_global_context_aware_prompt(storage, query_type, user_query):
     """
-    Extract and store key information by query type using smart storage.
-    This is the improved version that uses separate storage areas.
-    """
-    try:
-        if not key_information:
-            logger.info(f"No key information extracted for {query_type}")
-            return
-        
-        # Save key information to the appropriate type-specific storage
-        storage.save_key_information_by_type(query_type, key_information)
-        
-        logger.info(f"Successfully stored key information for {query_type}: {list(key_information.keys())}")
-        
-    except Exception as e:
-        logger.error(f"Error storing key information for {query_type}: {str(e)}")
-
-def build_context_aware_prompt(storage, query_type, user_query):
-    """
-    Build a context-aware prompt using only relevant information for the query type.
-    This demonstrates efficient prompt engineering!
+    Build a context-aware prompt using global + type-specific context.
+    This is the enhanced version that handles shared "super" key information!
     """
     try:
-        # Get relevant context for this specific query type
-        context = storage.get_relevant_context_for_query_type(query_type)
+        # Get complete context (global + type-specific + external data)
+        context = storage.get_complete_context_for_query_type(query_type)
         
-        key_info = context["key_information"]
+        global_info = context["global"]
+        type_specific_info = context["type_specific"]
         external_data = context["external_data"]
         
         # Build base prompt
@@ -98,53 +81,70 @@ def build_context_aware_prompt(storage, query_type, user_query):
             "",
         ]
         
-        # Add relevant context based on query type
+        # Add GLOBAL context (shared across all query types)
+        global_context_added = False
+        if any(global_info.get(k) for k in ["destination", "travel_dates", "duration", "budget", "group_size", "interests"]):
+            prompt_parts.append("TRAVELER PROFILE (from previous conversations):")
+            global_context_added = True
+            
+            if global_info.get("destination"):
+                prompt_parts.append(f"- Destination: {global_info['destination']}")
+            if global_info.get("travel_dates"):
+                prompt_parts.append(f"- Travel Dates: {global_info['travel_dates']}")
+            if global_info.get("duration"):
+                prompt_parts.append(f"- Trip Duration: {global_info['duration']}")
+            if global_info.get("budget"):
+                prompt_parts.append(f"- Budget: {global_info['budget']}")
+            if global_info.get("group_size"):
+                prompt_parts.append(f"- Group Size: {global_info['group_size']}")
+            if global_info.get("interests") and len(global_info['interests']) > 0:
+                prompt_parts.append(f"- Interests: {', '.join(global_info['interests'])}")
+            
+            prompt_parts.append("")
+        
+        # Add TYPE-SPECIFIC context based on query type
         if query_type == "destination_recommendations":
-            if any(key_info.get(k) for k in ["budget", "travel_style", "interests", "group_size"]):
-                prompt_parts.append("USER PREFERENCES:")
-                if key_info.get("budget"):
-                    prompt_parts.append(f"- Budget: {key_info['budget']}")
-                if key_info.get("travel_style"):
-                    prompt_parts.append(f"- Travel Style: {key_info['travel_style']}")
-                if key_info.get("interests"):
-                    prompt_parts.append(f"- Interests: {', '.join(key_info['interests'])}")
-                if key_info.get("group_size"):
-                    prompt_parts.append(f"- Group Size: {key_info['group_size']}")
-                if key_info.get("constraints"):
-                    prompt_parts.append(f"- Constraints: {', '.join(key_info['constraints'])}")
+            if any(type_specific_info.get(k) for k in ["travel_style", "constraints", "climate_preference"]):
+                prompt_parts.append("DESTINATION PREFERENCES:")
+                if type_specific_info.get("travel_style"):
+                    prompt_parts.append(f"- Travel Style: {type_specific_info['travel_style']}")
+                if type_specific_info.get("constraints") and len(type_specific_info['constraints']) > 0:
+                    prompt_parts.append(f"- Constraints: {', '.join(type_specific_info['constraints'])}")
+                if type_specific_info.get("climate_preference"):
+                    prompt_parts.append(f"- Climate Preference: {type_specific_info['climate_preference']}")
                 prompt_parts.append("")
         
         elif query_type == "packing_suggestions":
-            if any(key_info.get(k) for k in ["destination", "travel_dates", "activities"]):
-                prompt_parts.append("TRIP CONTEXT:")
-                if key_info.get("destination"):
-                    prompt_parts.append(f"- Destination: {key_info['destination']}")
-                if key_info.get("travel_dates"):
-                    prompt_parts.append(f"- Travel Dates: {key_info['travel_dates']}")
-                if key_info.get("activities"):
-                    prompt_parts.append(f"- Planned Activities: {', '.join(key_info['activities'])}")
-                if key_info.get("duration"):
-                    prompt_parts.append(f"- Duration: {key_info['duration']}")
+            if any(type_specific_info.get(k) for k in ["activities", "luggage_type", "special_needs", "laundry_availability"]):
+                prompt_parts.append("PACKING PREFERENCES:")
+                if type_specific_info.get("activities") and len(type_specific_info['activities']) > 0:
+                    prompt_parts.append(f"- Planned Activities: {', '.join(type_specific_info['activities'])}")
+                if type_specific_info.get("luggage_type"):
+                    prompt_parts.append(f"- Luggage Type: {type_specific_info['luggage_type']}")
+                if type_specific_info.get("special_needs") and len(type_specific_info['special_needs']) > 0:
+                    prompt_parts.append(f"- Special Needs: {', '.join(type_specific_info['special_needs'])}")
+                if type_specific_info.get("laundry_availability"):
+                    prompt_parts.append(f"- Laundry Availability: {type_specific_info['laundry_availability']}")
                 prompt_parts.append("")
             
             # Add weather data if available
             if external_data.get("weather"):
                 weather = external_data["weather"]
                 prompt_parts.append("CURRENT WEATHER DATA:")
-                prompt_parts.append(f"- Weather: {weather}")
+                prompt_parts.append(f"- Weather Forecast: {weather}")
                 prompt_parts.append("")
         
         elif query_type == "local_attractions":
-            if any(key_info.get(k) for k in ["destination", "interests", "time_available"]):
-                prompt_parts.append("PREFERENCES:")
-                if key_info.get("destination"):
-                    prompt_parts.append(f"- Destination: {key_info['destination']}")
-                if key_info.get("interests"):
-                    prompt_parts.append(f"- Interests: {', '.join(key_info['interests'])}")
-                if key_info.get("time_available"):
-                    prompt_parts.append(f"- Time Available: {key_info['time_available']}")
-                if key_info.get("budget_per_activity"):
-                    prompt_parts.append(f"- Budget per Activity: {key_info['budget_per_activity']}")
+            if any(type_specific_info.get(k) for k in ["time_available", "mobility", "budget_per_activity", "accessibility_needs"]):
+                prompt_parts.append("ATTRACTION PREFERENCES:")
+                if type_specific_info.get("time_available"):
+                    prompt_parts.append(f"- Time Available: {type_specific_info['time_available']}")
+                if type_specific_info.get("mobility"):
+                    prompt_parts.append(f"- Mobility: {type_specific_info['mobility']}")
+                if type_specific_info.get("budget_per_activity"):
+                    prompt_parts.append(f"- Budget per Activity: {type_specific_info['budget_per_activity']}")
+                if type_specific_info.get("accessibility_needs") and len(type_specific_info['accessibility_needs']) > 0:
+                    prompt_parts.append(f"- Accessibility Needs: {', '.join(type_specific_info['accessibility_needs'])}")
                 prompt_parts.append("")
             
             # Add attractions data if available
@@ -154,24 +154,34 @@ def build_context_aware_prompt(storage, query_type, user_query):
                 prompt_parts.append(f"- Available Attractions: {attractions}")
                 prompt_parts.append("")
         
-        # Add missing information guidance
+        # Add missing information guidance (SMART!)
         missing_info = storage.get_missing_information_for_type(query_type)
-        if missing_info:
-            prompt_parts.append("MISSING INFORMATION (ask user if needed):")
-            for field in missing_info[:3]:  # Only show top 3 missing fields
+        
+        important_missing = []
+        if missing_info.get("global"):
+            important_missing.extend(missing_info["global"][:2])  # Top 2 global missing
+        if missing_info.get("type_specific"):
+            important_missing.extend(missing_info["type_specific"][:2])  # Top 2 type-specific missing
+        
+        if important_missing:
+            prompt_parts.append("IMPORTANT MISSING INFORMATION (politely ask user if relevant):")
+            for field in important_missing:
                 prompt_parts.append(f"- {field.replace('_', ' ').title()}")
             prompt_parts.append("")
         
-        # Final instruction
-        prompt_parts.append("Provide helpful, specific advice. If important information is missing, politely ask the user for it.")
+        # Final instruction with context awareness
+        if global_context_added:
+            prompt_parts.append("Provide personalized advice based on their traveler profile. If important information is missing, politely ask for it to give better recommendations.")
+        else:
+            prompt_parts.append("Provide helpful travel advice. Ask for key information to personalize recommendations.")
         
         final_prompt = "\n".join(prompt_parts)
-        logger.info(f"Built context-aware prompt for {query_type} ({len(final_prompt)} chars)")
+        logger.info(f"Built global context-aware prompt for {query_type} ({len(final_prompt)} chars)")
         
         return final_prompt
         
     except Exception as e:
-        logger.error(f"Error building context-aware prompt: {str(e)}")
+        logger.error(f"Error building global context-aware prompt: {str(e)}")
         # Fallback to simple prompt
         return f"You are a travel assistant. User asks: {user_query}. Please provide helpful advice."
 
@@ -197,11 +207,11 @@ def format_conversation_for_display(conversation_history):
     return formatted_messages
 
 def main():
-    """Main Streamlit application with Smart Storage"""
+    """Main Streamlit application with Global Context Management"""
     
     # Title and description
-    st.title("✈️ Smart Travel Assistant")
-    st.markdown("*Navan Junior AI Engineer Assignment - Smart Context Management*")
+    st.title("🧠 Global Context Travel Assistant")
+    st.markdown("*Navan Junior AI Engineer Assignment - Global + Type-Specific Context Management*")
     st.markdown("---")
     
     # Initialize components
@@ -211,45 +221,60 @@ def main():
         st.error("Failed to initialize components. Please check your configuration.")
         st.stop()
     
-    # Enhanced sidebar with storage statistics
+    # Enhanced sidebar with global context statistics
     with st.sidebar:
-        st.markdown("### 📊 Smart Storage Stats")
+        st.markdown("### 🌍 Global Context Stats")
         
         try:
             stats = storage.get_storage_stats()
             
-            # Conversation stats
-            conv_stats = stats.get("conversation", {})
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Queries", conv_stats.get("user_queries", 0))
-            with col2:
-                st.metric("Responses", conv_stats.get("assistant_responses", 0))
+            # Global context completeness
+            global_stats = stats.get("global_context", {})
+            global_completeness = global_stats.get("completeness_percent", 0)
             
-            # Key information completeness
-            st.markdown("### 🎯 Profile Completeness")
-            key_info_stats = stats.get("key_information", {})
+            st.progress(global_completeness / 100, text=f"Global Profile: {global_completeness}%")
             
-            for query_type, info in key_info_stats.items():
+            # Show current global data
+            current_global = global_stats.get("current_data", {})
+            if current_global:
+                st.markdown("**Current Global Context:**")
+                for key, value in current_global.items():
+                    if isinstance(value, list):
+                        st.text(f"• {key.title()}: {', '.join(value)}")
+                    else:
+                        st.text(f"• {key.title()}: {value}")
+            else:
+                st.text("No global context yet")
+            
+            st.markdown("### 🎯 Type-Specific Completeness")
+            
+            # Type-specific completeness
+            type_stats = stats.get("type_specific", {})
+            for query_type, info in type_stats.items():
                 completeness = info.get("completeness_percent", 0)
                 st.progress(completeness / 100, text=f"{query_type.replace('_', ' ').title()}: {completeness}%")
-                
-                # Show missing fields
-                missing = info.get("missing_fields", [])
-                if missing:
-                    with st.expander(f"Missing for {query_type.replace('_', ' ')}", expanded=False):
-                        for field in missing:
-                            st.text(f"• {field.replace('_', ' ').title()}")
+            
+            # Conversation stats
+            st.markdown("### 💬 Conversation Stats")
+            # Get conversation history for stats
+            history = storage.get_conversation_history()
+            user_queries = sum(1 for msg in history if "user_query" in msg)
+            assistant_responses = sum(1 for msg in history if "assistant_answer" in msg)
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Queries", user_queries)
+            with col2:
+                st.metric("Responses", assistant_responses)
             
             # External data status
-            st.markdown("### 🌐 External Data Cache")
+            st.markdown("### 🌐 External Data")
             external_stats = stats.get("external_data", {})
             
-            weather_status = "✅ Cached" if external_stats.get("weather_cached") else "❌ No Data"
-            attractions_status = "✅ Cached" if external_stats.get("attractions_cached") else "❌ No Data"
+            weather_status = "✅" if external_stats.get("weather_cached") else "❌"
+            attractions_status = "✅" if external_stats.get("attractions_cached") else "❌"
             
-            st.text(f"Weather: {weather_status}")
-            st.text(f"Attractions: {attractions_status}")
+            st.text(f"Weather: {weather_status} | Attractions: {attractions_status}")
             
         except Exception as e:
             st.error(f"Error loading stats: {str(e)}")
@@ -263,18 +288,12 @@ def main():
             except Exception as e:
                 st.error(f"❌ Error clearing data: {str(e)}")
         
-        # Show supported query types
-        st.markdown("### 🎯 Query Types")
-        st.text("• Destination Recommendations")
-        st.text("• Packing Suggestions")
-        st.text("• Local Attractions & Activities")
-        
-        # Show current architecture
+        # Show architecture info
         st.markdown("### 🏗️ Smart Architecture")
-        st.text("✅ Type-specific key info storage")
-        st.text("✅ Context-aware prompt building")
-        st.text("✅ External data caching")
+        st.text("✅ Global context sharing")
+        st.text("✅ Type-specific contexts")
         st.text("✅ Missing info detection")
+        st.text("✅ Context-aware prompts")
 
         # Raw Gemini Response (debugging)
         if hasattr(st.session_state, 'last_raw_gemini') and st.session_state.last_raw_gemini:
@@ -283,7 +302,7 @@ def main():
                 st.json(st.session_state.last_raw_gemini)
     
     # Main chat interface
-    st.markdown("### 💬 Chat with Smart Travel Assistant")
+    st.markdown("### 💬 Chat with Global Context Assistant")
     
     # Get and display conversation history
     try:
@@ -315,16 +334,31 @@ def main():
                                     st.metric("External Data", "Yes" if classification.get("external_data_needed") else "No")
                                     st.metric("Source", classification.get("primary_source", "unknown"))
                                 
-                                # Key information extracted
+                                # Show how information was categorized
                                 if classification.get("key_information"):
                                     key_info = classification["key_information"]
-                                    st.markdown("**Key Information Extracted:**")
-                                    for key, value in key_info.items():
-                                        if value:
+                                    
+                                    # Separate global from type-specific for display
+                                    global_fields = {"destination", "travel_dates", "duration", "budget", "group_size", "interests"}
+                                    
+                                    global_info = {k: v for k, v in key_info.items() if k in global_fields and v}
+                                    type_specific_info = {k: v for k, v in key_info.items() if k not in global_fields and v}
+                                    
+                                    if global_info:
+                                        st.markdown("**Global Information Extracted:**")
+                                        for key, value in global_info.items():
                                             if isinstance(value, list):
-                                                st.text(f"• {key.title()}: {', '.join(value)}")
+                                                st.text(f"🌍 {key.title()}: {', '.join(value)}")
                                             else:
-                                                st.text(f"• {key.title()}: {value}")
+                                                st.text(f"🌍 {key.title()}: {value}")
+                                    
+                                    if type_specific_info:
+                                        st.markdown("**Type-Specific Information Extracted:**")
+                                        for key, value in type_specific_info.items():
+                                            if isinstance(value, list):
+                                                st.text(f"🎯 {key.title()}: {', '.join(value)}")
+                                            else:
+                                                st.text(f"🎯 {key.title()}: {value}")
                                 
                                 # Reasoning
                                 st.markdown("**Classification Reasoning:**")
@@ -361,15 +395,6 @@ def main():
                     if hasattr(classifier, 'last_raw_gemini_response') and classifier.last_raw_gemini_response:
                         st.session_state.last_raw_gemini = classifier.last_raw_gemini_response
                     
-                    # Show real-time classification in sidebar
-                    with st.sidebar:
-                        st.markdown("### 🎯 Last Query Analysis")
-                        st.json({
-                            "type": classification_result["type"],
-                            "external_data_needed": classification_result["external_data_needed"],
-                            "confidence": classification_result.get("confidence_score", 0)
-                        })
-                    
                 except Exception as e:
                     st.error(f"❌ Classification failed: {str(e)}")
                     classification_result = {
@@ -384,17 +409,17 @@ def main():
                         "error": str(e)
                     }
             
-            # Step 2: Generate context-aware response
-            with st.spinner("🤖 Generating smart response..."):
+            # Step 2: Generate global context-aware response
+            with st.spinner("🧠 Generating globally context-aware response..."):
                 try:
-                    # Build context-aware prompt using smart storage
-                    context_prompt = build_context_aware_prompt(
+                    # Build global context-aware prompt
+                    context_prompt = build_global_context_aware_prompt(
                         storage, 
                         classification_result["type"], 
                         user_input
                     )
                     
-                    # Generate response using the context-aware prompt
+                    # Generate response using the enhanced context-aware prompt
                     response = gemini.generate_response(context_prompt, max_tokens=800)
                     
                     if not response or len(response.strip()) == 0:
@@ -407,9 +432,9 @@ def main():
             # Display the response
             st.write(response)
             
-            # Show classification results and context used
+            # Show enhanced context analysis
             if classification_result:
-                with st.expander("🔍 Smart Query Analysis", expanded=False):
+                with st.expander("🧠 Global Context Analysis", expanded=False):
                     col1, col2 = st.columns(2)
                     with col1:
                         st.metric("Query Type", classification_result["type"])
@@ -419,68 +444,62 @@ def main():
                         st.metric("External Data", "Yes" if classification_result.get("external_data_needed") else "No")
                         st.metric("Source", classification_result.get("primary_source", "unknown"))
                     
-                    # Show context used for this response
+                    # Show complete context used for this response
                     try:
-                        context = storage.get_relevant_context_for_query_type(classification_result["type"])
-                        st.markdown("**Context Used in Response:**")
+                        context = storage.get_complete_context_for_query_type(classification_result["type"])
                         
-                        key_info_used = []
-                        for key, value in context["key_information"].items():
+                        # Global context used
+                        global_context_used = []
+                        for key, value in context["global"].items():
+                            if value:
+                                if isinstance(value, list) and len(value) > 0:
+                                    global_context_used.append(f"{key.replace('_', ' ').title()}: {', '.join(value)}")
+                                elif isinstance(value, str) and value.strip():
+                                    global_context_used.append(f"{key.replace('_', ' ').title()}: {value}")
+                        
+                        if global_context_used:
+                            st.markdown("**🌍 Global Context Used:**")
+                            for info in global_context_used:
+                                st.text(f"• {info}")
+                        
+                        # Type-specific context used
+                        type_context_used = []
+                        for key, value in context["type_specific"].items():
                             if value and key != "other":
                                 if isinstance(value, list) and len(value) > 0:
-                                    key_info_used.append(f"{key.replace('_', ' ').title()}: {', '.join(value)}")
+                                    type_context_used.append(f"{key.replace('_', ' ').title()}: {', '.join(value)}")
                                 elif isinstance(value, str) and value.strip():
-                                    key_info_used.append(f"{key.replace('_', ' ').title()}: {value}")
+                                    type_context_used.append(f"{key.replace('_', ' ').title()}: {value}")
                         
-                        if key_info_used:
-                            for info in key_info_used:
+                        if type_context_used:
+                            st.markdown("**🎯 Type-Specific Context Used:**")
+                            for info in type_context_used:
                                 st.text(f"• {info}")
-                        else:
-                            st.text("• No previous context available")
                         
-                        # Show external data used
+                        # External data used
                         if context["external_data"]:
-                            st.markdown("**External Data Used:**")
+                            st.markdown("**🌐 External Data Used:**")
                             for data_type, data in context["external_data"].items():
                                 st.text(f"• {data_type.title()}: Available")
+                        
+                        # Missing information analysis
+                        missing = storage.get_missing_information_for_type(classification_result["type"])
+                        if missing["global"] or missing["type_specific"]:
+                            st.markdown("**❓ Missing Information for Better Responses:**")
+                            for field in (missing["global"] + missing["type_specific"])[:3]:
+                                st.text(f"• {field.replace('_', ' ').title()}")
                         
                     except Exception as e:
                         st.text(f"Error showing context: {str(e)}")
                     
-                    # Key information extracted from this query
-                    if classification_result.get("key_information"):
-                        key_info = classification_result["key_information"]
-                        st.markdown("**New Information Extracted:**")
-                        for key, value in key_info.items():
-                            if value:
-                                if isinstance(value, list):
-                                    st.text(f"• {key.title()}: {', '.join(value)}")
-                                else:
-                                    st.text(f"• {key.title()}: {value}")
-                    
-                    # Missing information that could improve responses
-                    try:
-                        missing_info = storage.get_missing_information_for_type(classification_result["type"])
-                        if missing_info:
-                            st.markdown("**Missing Information (for better responses):**")
-                            for field in missing_info[:3]:  # Show only top 3
-                                st.text(f"• {field.replace('_', ' ').title()}")
-                    except Exception as e:
-                        pass
-                    
-                    # Reasoning
-                    st.markdown("**Classification Reasoning:**")
-                    st.text(classification_result.get("reasoning", "No reasoning provided"))
-                    
                     if classification_result.get("fallback_used"):
                         st.warning("⚠️ Fallback classification used due to LLM error")
         
-        # Step 3: Save to Smart Storage
+        # Step 3: Save to Global Context Storage (NEW METHOD!)
         if classification_result and response:
             try:
-                # Extract and store key information by type (NEW SMART METHOD)
-                extract_and_store_key_information(
-                    storage, 
+                # Extract and store using global context method (NEW!)
+                storage.extract_and_store_key_information(
                     classification_result["type"], 
                     classification_result.get("key_information", {})
                 )
@@ -495,11 +514,11 @@ def main():
                 # Save assistant answer (SAME AS BEFORE)
                 storage.save_assistant_answer(response)
                 
-                logger.info(f"Successfully saved to smart storage - Type: {classification_result['type']}")
+                logger.info(f"Successfully saved to global context storage - Type: {classification_result['type']}")
                 
             except Exception as e:
-                st.error(f"❌ Error saving to smart storage: {str(e)}")
-                logger.error(f"Smart storage save error: {str(e)}")
+                st.error(f"❌ Error saving to global context storage: {str(e)}")
+                logger.error(f"Global context storage save error: {str(e)}")
         
         # Rerun to update the chat display and sidebar stats
         st.rerun()
@@ -508,8 +527,8 @@ def main():
     st.markdown("---")
     st.markdown(
         "<div style='text-align: center; color: gray;'>"
-        "Smart Travel Assistant | Navan Junior AI Engineer Assignment<br>"
-        "✅ Smart Context Management | ✅ Type-Specific Storage | ✅ Context-Aware Prompts | ✅ Missing Info Detection"
+        "Global Context Travel Assistant | Navan Junior AI Engineer Assignment<br>"
+        "✅ Global Context Sharing | ✅ Type-Specific Storage | ✅ Context-Aware Prompts | ✅ Missing Info Detection"
         "</div>", 
         unsafe_allow_html=True
     )
