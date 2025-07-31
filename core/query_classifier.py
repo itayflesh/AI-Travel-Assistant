@@ -92,6 +92,8 @@ class QueryClassifier:
                 "activities", "attractions", "things to do", "restaurants"
             ]
         }
+
+        self.last_raw_gemini_response = None
     
     def classify_with_gemini(self, query: str) -> Dict[str, Any]:
         """
@@ -105,7 +107,6 @@ class QueryClassifier:
             Dict with type, external_data_needed, and key_information
         """
         
-        # Advanced prompt engineering - chain of thought reasoning
         prompt = f"""You are an expert travel query classifier. Analyze this travel query and provide a structured response.
 
 QUERY: "{query}"
@@ -118,7 +119,7 @@ MANDATORY CLASSIFICATION TYPES (you MUST choose exactly one):
 ANALYSIS FRAMEWORK:
 Step 1: What is the user's primary intent?
 Step 2: Which of the 3 mandatory types best matches this intent?
-Step 3: Does answering this query require external data? We ONLY have 2 external data sources: WEATHER data and CURRENT LOCAL ATTRACTIONS data. If the query doesn't need weather information OR current attractions information, then external_data_needed should be False and external_data_type should be "none".
+Step 3: Does answering this query require external data? We ONLY have 2 external data sources: Right now WEATHER data and CURRENT LOCAL ATTRACTIONS data. If the query doesn't need right now weather information OR current attractions information, then external_data_needed should be False and external_data_type should be "none".
 Step 4: What key user preferences or information can be extracted for future personalization?
 
 KEY INFORMATION TO EXTRACT (if mentioned):
@@ -160,6 +161,9 @@ Respond with JSON:
                 response_clean = response_clean[json_start:json_end].strip()
             
             result = json.loads(response_clean)
+
+            # Store raw response for debugging/testing
+            self.last_raw_gemini_response = result
             
             # Validate required fields
             if not all(key in result for key in ["type", "external_data_needed", "external_data_type", "key_information"]):
@@ -290,6 +294,7 @@ Respond with JSON:
         final_result = {
             "type": None,
             "external_data_needed": False,
+            "external_data_type": "none",
             "key_information": {},
             "confidence_score": 0.0,
             "primary_source": None,
@@ -330,9 +335,11 @@ Respond with JSON:
             if "external_data_needed" in gemini_result:
                 final_result["external_data_needed"] = gemini_result["external_data_needed"]
                 final_result["external_data_reason"] = gemini_result.get("external_data_reason", "LLM recommendation")
+                final_result["external_data_type"] = gemini_result.get("external_data_type", "none")
             else:
                 final_result["external_data_needed"] = pattern_result["external_data_needed"]
                 final_result["external_data_reason"] = pattern_result["external_data_reason"]
+                final_result["external_data_type"] = "none"
             
             # Key information - only LLM can extract this
             final_result["key_information"] = gemini_result.get("key_information", {})
@@ -386,6 +393,7 @@ Respond with JSON:
             final_result = {
                 "type": pattern_result["type"],
                 "external_data_needed": pattern_result["external_data_needed"],
+                "external_data_type": "none",
                 "key_information": {},  # No key info without LLM
                 "confidence_score": pattern_result["confidence"],
                 "primary_source": "patterns_fallback",

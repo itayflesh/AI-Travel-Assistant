@@ -82,6 +82,12 @@ def main():
         st.text("✅ llm/gemini_client.py") 
         st.text("✅ core/query_classifier.py")
         st.text("⏳ Next: Data router & APIs")
+
+        # Raw Gemini Response (for testing)
+        if hasattr(st.session_state, 'last_raw_gemini') and st.session_state.last_raw_gemini:
+            st.markdown("### 🤖 Raw Gemini Response")
+            with st.expander("View Raw Classification", expanded=False):
+                st.code(st.session_state.last_raw_gemini, language="text")
     
     # Chat interface
     st.markdown("### Chat with Travel Assistant")
@@ -144,6 +150,10 @@ def main():
                 # Step 1: Classify the query (NEW!)
                 try:
                     classification_result = classifier.classify_query(user_input)
+
+                    # Store raw Gemini response for debugging
+                    if hasattr(classifier, 'last_raw_gemini_response') and classifier.last_raw_gemini_response:
+                        st.session_state.last_raw_gemini = classifier.last_raw_gemini_response
                     
                     # Show classification in sidebar for immediate feedback
                     with st.sidebar:
