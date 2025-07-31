@@ -320,7 +320,6 @@ class GlobalContextStorage:
         
         return matches
     
-    # Include all the existing methods from previous storage (unchanged)
     def save_user_query(self, query_data: Dict[str, Any]):
         """Save user query with classification data"""
         timestamp = datetime.now(timezone.utc).isoformat()
