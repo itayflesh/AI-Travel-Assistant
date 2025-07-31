@@ -12,7 +12,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from llm.gemini_client import GeminiClient
 from core.query_classifier import QueryClassifier
-from core.redis_storage import RedisStorage
+from core.redis_storage import SmartRedisStorage
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -28,15 +28,15 @@ st.set_page_config(
 # Initialize components with proper error handling
 @st.cache_resource
 def init_components():
-    """Initialize Redis storage, Gemini client, and query classifier"""
+    """Initialize Smart Redis storage, Gemini client, and query classifier"""
     try:
-        # Initialize Redis storage
-        storage = RedisStorage()
+        # Initialize Smart Redis storage
+        storage = SmartRedisStorage()
         
         # Test Redis connection
         try:
             storage.redis_client.ping()
-            st.success("✅ Redis connection successful")
+            st.success("✅ Smart Redis storage connection successful")
         except Exception as e:
             st.error(f"❌ Redis connection failed: {str(e)}")
             st.error("Make sure Redis is running and REDIS_URL is configured correctly")
@@ -52,7 +52,7 @@ def init_components():
         else:
             st.success("✅ Gemini API connection successful")
         
-        # Initialize query classifier
+        # Initialize query classifier (SAME LOGIC AS BEFORE)
         classifier = QueryClassifier(gemini)
         
         return storage, gemini, classifier
@@ -61,30 +61,122 @@ def init_components():
         st.error(f"❌ Initialization error: {str(e)}")
         return None, None, None
 
-def store_key_information(storage, query_type, key_information):
-    """Store key information by type for future use"""
+def extract_and_store_key_information(storage, query_type, key_information):
+    """
+    Extract and store key information by query type using smart storage.
+    This is the improved version that uses separate storage areas.
+    """
     try:
         if not key_information:
+            logger.info(f"No key information extracted for {query_type}")
             return
-            
-        # Use ORIGINAL query types, not mapped ones
-        profile_type = query_type  # Keep original: destination_recommendations, etc.
         
-        # Store each piece of key information
-        for key, value in key_information.items():
-            if value:  # Only store non-empty values
-                if isinstance(value, list) and len(value) > 0:
-                    storage.save_user_profile_data(profile_type, key, value)
-                elif isinstance(value, str) and value.strip():
-                    storage.save_user_profile_data(profile_type, key, value.strip())
-                    
-        logger.info(f"Stored key information for {profile_type}: {key_information}")
+        # Save key information to the appropriate type-specific storage
+        storage.save_key_information_by_type(query_type, key_information)
+        
+        logger.info(f"Successfully stored key information for {query_type}: {list(key_information.keys())}")
         
     except Exception as e:
-        logger.error(f"Error storing key information: {str(e)}")
+        logger.error(f"Error storing key information for {query_type}: {str(e)}")
+
+def build_context_aware_prompt(storage, query_type, user_query):
+    """
+    Build a context-aware prompt using only relevant information for the query type.
+    This demonstrates efficient prompt engineering!
+    """
+    try:
+        # Get relevant context for this specific query type
+        context = storage.get_relevant_context_for_query_type(query_type)
+        
+        key_info = context["key_information"]
+        external_data = context["external_data"]
+        
+        # Build base prompt
+        prompt_parts = [
+            f"You are an expert travel assistant specializing in {query_type.replace('_', ' ')}.",
+            f"User Query: {user_query}",
+            "",
+        ]
+        
+        # Add relevant context based on query type
+        if query_type == "destination_recommendations":
+            if any(key_info.get(k) for k in ["budget", "travel_style", "interests", "group_size"]):
+                prompt_parts.append("USER PREFERENCES:")
+                if key_info.get("budget"):
+                    prompt_parts.append(f"- Budget: {key_info['budget']}")
+                if key_info.get("travel_style"):
+                    prompt_parts.append(f"- Travel Style: {key_info['travel_style']}")
+                if key_info.get("interests"):
+                    prompt_parts.append(f"- Interests: {', '.join(key_info['interests'])}")
+                if key_info.get("group_size"):
+                    prompt_parts.append(f"- Group Size: {key_info['group_size']}")
+                if key_info.get("constraints"):
+                    prompt_parts.append(f"- Constraints: {', '.join(key_info['constraints'])}")
+                prompt_parts.append("")
+        
+        elif query_type == "packing_suggestions":
+            if any(key_info.get(k) for k in ["destination", "travel_dates", "activities"]):
+                prompt_parts.append("TRIP CONTEXT:")
+                if key_info.get("destination"):
+                    prompt_parts.append(f"- Destination: {key_info['destination']}")
+                if key_info.get("travel_dates"):
+                    prompt_parts.append(f"- Travel Dates: {key_info['travel_dates']}")
+                if key_info.get("activities"):
+                    prompt_parts.append(f"- Planned Activities: {', '.join(key_info['activities'])}")
+                if key_info.get("duration"):
+                    prompt_parts.append(f"- Duration: {key_info['duration']}")
+                prompt_parts.append("")
+            
+            # Add weather data if available
+            if external_data.get("weather"):
+                weather = external_data["weather"]
+                prompt_parts.append("CURRENT WEATHER DATA:")
+                prompt_parts.append(f"- Weather: {weather}")
+                prompt_parts.append("")
+        
+        elif query_type == "local_attractions":
+            if any(key_info.get(k) for k in ["destination", "interests", "time_available"]):
+                prompt_parts.append("PREFERENCES:")
+                if key_info.get("destination"):
+                    prompt_parts.append(f"- Destination: {key_info['destination']}")
+                if key_info.get("interests"):
+                    prompt_parts.append(f"- Interests: {', '.join(key_info['interests'])}")
+                if key_info.get("time_available"):
+                    prompt_parts.append(f"- Time Available: {key_info['time_available']}")
+                if key_info.get("budget_per_activity"):
+                    prompt_parts.append(f"- Budget per Activity: {key_info['budget_per_activity']}")
+                prompt_parts.append("")
+            
+            # Add attractions data if available
+            if external_data.get("attractions"):
+                attractions = external_data["attractions"]
+                prompt_parts.append("CURRENT ATTRACTIONS DATA:")
+                prompt_parts.append(f"- Available Attractions: {attractions}")
+                prompt_parts.append("")
+        
+        # Add missing information guidance
+        missing_info = storage.get_missing_information_for_type(query_type)
+        if missing_info:
+            prompt_parts.append("MISSING INFORMATION (ask user if needed):")
+            for field in missing_info[:3]:  # Only show top 3 missing fields
+                prompt_parts.append(f"- {field.replace('_', ' ').title()}")
+            prompt_parts.append("")
+        
+        # Final instruction
+        prompt_parts.append("Provide helpful, specific advice. If important information is missing, politely ask the user for it.")
+        
+        final_prompt = "\n".join(prompt_parts)
+        logger.info(f"Built context-aware prompt for {query_type} ({len(final_prompt)} chars)")
+        
+        return final_prompt
+        
+    except Exception as e:
+        logger.error(f"Error building context-aware prompt: {str(e)}")
+        # Fallback to simple prompt
+        return f"You are a travel assistant. User asks: {user_query}. Please provide helpful advice."
 
 def format_conversation_for_display(conversation_history):
-    """Format Redis conversation history for Streamlit display"""
+    """Format conversation history for Streamlit display - SAME AS BEFORE"""
     formatted_messages = []
     
     for message in conversation_history:
@@ -104,27 +196,12 @@ def format_conversation_for_display(conversation_history):
     
     return formatted_messages
 
-def format_conversation_for_gemini(conversation_history):
-    """Format Redis conversation history for Gemini API"""
-    gemini_history = []
-    current_turn = {}
-    
-    for message in conversation_history:
-        if "user_query" in message:
-            current_turn = {"user": message["user_query"], "assistant": ""}
-        elif "assistant_answer" in message and current_turn:
-            current_turn["assistant"] = message["assistant_answer"]
-            gemini_history.append(current_turn)
-            current_turn = {}
-    
-    return gemini_history
-
 def main():
-    """Main Streamlit application"""
+    """Main Streamlit application with Smart Storage"""
     
     # Title and description
-    st.title("✈️ Travel Assistant")
-    st.markdown("*Navan Junior AI Engineer Assignment - Redis Storage Demo*")
+    st.title("✈️ Smart Travel Assistant")
+    st.markdown("*Navan Junior AI Engineer Assignment - Smart Context Management*")
     st.markdown("---")
     
     # Initialize components
@@ -134,61 +211,79 @@ def main():
         st.error("Failed to initialize components. Please check your configuration.")
         st.stop()
     
-    # Sidebar with session info and controls
+    # Enhanced sidebar with storage statistics
     with st.sidebar:
-        st.markdown("### 📊 Session Info")
-        st.text("Single Redis session mode")
+        st.markdown("### 📊 Smart Storage Stats")
         
-        # Get conversation stats
         try:
-            history = storage.get_conversation_history()
-            user_queries = sum(1 for msg in history if "user_query" in msg)
-            assistant_responses = sum(1 for msg in history if "assistant_answer" in msg)
+            stats = storage.get_storage_stats()
             
+            # Conversation stats
+            conv_stats = stats.get("conversation", {})
             col1, col2 = st.columns(2)
             with col1:
-                st.metric("User Queries", user_queries)
+                st.metric("Queries", conv_stats.get("user_queries", 0))
             with col2:
-                st.metric("Responses", assistant_responses)
+                st.metric("Responses", conv_stats.get("assistant_responses", 0))
+            
+            # Key information completeness
+            st.markdown("### 🎯 Profile Completeness")
+            key_info_stats = stats.get("key_information", {})
+            
+            for query_type, info in key_info_stats.items():
+                completeness = info.get("completeness_percent", 0)
+                st.progress(completeness / 100, text=f"{query_type.replace('_', ' ').title()}: {completeness}%")
                 
+                # Show missing fields
+                missing = info.get("missing_fields", [])
+                if missing:
+                    with st.expander(f"Missing for {query_type.replace('_', ' ')}", expanded=False):
+                        for field in missing:
+                            st.text(f"• {field.replace('_', ' ').title()}")
+            
+            # External data status
+            st.markdown("### 🌐 External Data Cache")
+            external_stats = stats.get("external_data", {})
+            
+            weather_status = "✅ Cached" if external_stats.get("weather_cached") else "❌ No Data"
+            attractions_status = "✅ Cached" if external_stats.get("attractions_cached") else "❌ No Data"
+            
+            st.text(f"Weather: {weather_status}")
+            st.text(f"Attractions: {attractions_status}")
+            
         except Exception as e:
-            st.error(f"Error getting stats: {str(e)}")
+            st.error(f"Error loading stats: {str(e)}")
         
         # Clear conversation button
-        if st.button("🗑️ Clear Conversation"):
+        if st.button("🗑️ Clear All Data"):
             try:
-                # Clear Redis data for this session
-                storage.redis_client.delete(f"{storage.session_key}:conversation_order")
-                # Clear all user query and assistant answer keys
-                keys_to_delete = storage.redis_client.keys(f"{storage.session_key}:*")
-                if keys_to_delete:
-                    storage.redis_client.delete(*keys_to_delete)
-                st.success("✅ Conversation cleared!")
+                storage.clear_all_data()
+                st.success("✅ All data cleared!")
                 st.rerun()
             except Exception as e:
-                st.error(f"❌ Error clearing conversation: {str(e)}")
+                st.error(f"❌ Error clearing data: {str(e)}")
         
-        # Show current structure (for development)
-        st.markdown("### 🏗️ Project Status")
-        st.text("✅ core/redis_storage.py")
-        st.text("✅ llm/gemini_client.py") 
-        st.text("✅ core/query_classifier.py")
-        st.text("⏳ Next: External APIs")
-
         # Show supported query types
-        st.markdown("### 🎯 Supported Query Types")
+        st.markdown("### 🎯 Query Types")
         st.text("• Destination Recommendations")
         st.text("• Packing Suggestions")
         st.text("• Local Attractions & Activities")
+        
+        # Show current architecture
+        st.markdown("### 🏗️ Smart Architecture")
+        st.text("✅ Type-specific key info storage")
+        st.text("✅ Context-aware prompt building")
+        st.text("✅ External data caching")
+        st.text("✅ Missing info detection")
 
-        # Raw Gemini Response (for debugging)
+        # Raw Gemini Response (debugging)
         if hasattr(st.session_state, 'last_raw_gemini') and st.session_state.last_raw_gemini:
             st.markdown("### 🤖 Raw Gemini Response")
             with st.expander("View Raw Classification", expanded=False):
                 st.json(st.session_state.last_raw_gemini)
     
     # Main chat interface
-    st.markdown("### 💬 Chat with Travel Assistant")
+    st.markdown("### 💬 Chat with Smart Travel Assistant")
     
     # Get and display conversation history
     try:
@@ -207,7 +302,7 @@ def main():
                         
                         # Show classification data if available
                         if message.get("classification"):
-                            with st.expander("🔍 Query Analysis", expanded=False):
+                            with st.expander("🔍 Smart Query Analysis", expanded=False):
                                 classification = message["classification"]
                                 
                                 # Main metrics
@@ -234,11 +329,6 @@ def main():
                                 # Reasoning
                                 st.markdown("**Classification Reasoning:**")
                                 st.text(classification.get("reasoning", "No reasoning provided"))
-                                
-                                # External data reasoning
-                                if classification.get("external_data_reason"):
-                                    st.markdown("**External Data Reasoning:**")
-                                    st.text(classification["external_data_reason"])
                         
                 elif message["type"] == "assistant":
                     with st.chat_message("assistant"):
@@ -262,7 +352,7 @@ def main():
             classification_result = None
             response = None
             
-            # Step 1: Classify the query
+            # Step 1: Classify the query (SAME LOGIC AS BEFORE)
             with st.spinner("🔍 Analyzing your query..."):
                 try:
                     classification_result = classifier.classify_query(user_input)
@@ -294,20 +384,18 @@ def main():
                         "error": str(e)
                     }
             
-            # Step 2: Generate response
-            with st.spinner("🤖 Generating response..."):
+            # Step 2: Generate context-aware response
+            with st.spinner("🤖 Generating smart response..."):
                 try:
-                    # Get relevant context for this query type
-                    context = storage.get_context_for_type(classification_result["type"])
-                    
-                    # Format conversation history for Gemini
-                    gemini_history = format_conversation_for_gemini(conversation_history)
-                    
-                    # Generate response with context
-                    response = gemini.generate_simple_chat_response(
-                        user_input, 
-                        gemini_history
+                    # Build context-aware prompt using smart storage
+                    context_prompt = build_context_aware_prompt(
+                        storage, 
+                        classification_result["type"], 
+                        user_input
                     )
+                    
+                    # Generate response using the context-aware prompt
+                    response = gemini.generate_response(context_prompt, max_tokens=800)
                     
                     if not response or len(response.strip()) == 0:
                         response = "I apologize, but I couldn't generate a proper response. Please try rephrasing your question."
@@ -319,9 +407,9 @@ def main():
             # Display the response
             st.write(response)
             
-            # Show classification results in expandable section
+            # Show classification results and context used
             if classification_result:
-                with st.expander("🔍 Query Analysis", expanded=False):
+                with st.expander("🔍 Smart Query Analysis", expanded=False):
                     col1, col2 = st.columns(2)
                     with col1:
                         st.metric("Query Type", classification_result["type"])
@@ -331,16 +419,54 @@ def main():
                         st.metric("External Data", "Yes" if classification_result.get("external_data_needed") else "No")
                         st.metric("Source", classification_result.get("primary_source", "unknown"))
                     
-                    # Key information extracted  
+                    # Show context used for this response
+                    try:
+                        context = storage.get_relevant_context_for_query_type(classification_result["type"])
+                        st.markdown("**Context Used in Response:**")
+                        
+                        key_info_used = []
+                        for key, value in context["key_information"].items():
+                            if value and key != "other":
+                                if isinstance(value, list) and len(value) > 0:
+                                    key_info_used.append(f"{key.replace('_', ' ').title()}: {', '.join(value)}")
+                                elif isinstance(value, str) and value.strip():
+                                    key_info_used.append(f"{key.replace('_', ' ').title()}: {value}")
+                        
+                        if key_info_used:
+                            for info in key_info_used:
+                                st.text(f"• {info}")
+                        else:
+                            st.text("• No previous context available")
+                        
+                        # Show external data used
+                        if context["external_data"]:
+                            st.markdown("**External Data Used:**")
+                            for data_type, data in context["external_data"].items():
+                                st.text(f"• {data_type.title()}: Available")
+                        
+                    except Exception as e:
+                        st.text(f"Error showing context: {str(e)}")
+                    
+                    # Key information extracted from this query
                     if classification_result.get("key_information"):
                         key_info = classification_result["key_information"]
-                        st.markdown("**Key Information Extracted:**")
+                        st.markdown("**New Information Extracted:**")
                         for key, value in key_info.items():
                             if value:
                                 if isinstance(value, list):
                                     st.text(f"• {key.title()}: {', '.join(value)}")
                                 else:
                                     st.text(f"• {key.title()}: {value}")
+                    
+                    # Missing information that could improve responses
+                    try:
+                        missing_info = storage.get_missing_information_for_type(classification_result["type"])
+                        if missing_info:
+                            st.markdown("**Missing Information (for better responses):**")
+                            for field in missing_info[:3]:  # Show only top 3
+                                st.text(f"• {field.replace('_', ' ').title()}")
+                    except Exception as e:
+                        pass
                     
                     # Reasoning
                     st.markdown("**Classification Reasoning:**")
@@ -349,41 +475,41 @@ def main():
                     if classification_result.get("fallback_used"):
                         st.warning("⚠️ Fallback classification used due to LLM error")
         
-        # Step 3: Save to Redis
+        # Step 3: Save to Smart Storage
         if classification_result and response:
             try:
-                # Store key information by type (as required)
-                store_key_information(
+                # Extract and store key information by type (NEW SMART METHOD)
+                extract_and_store_key_information(
                     storage, 
                     classification_result["type"], 
                     classification_result.get("key_information", {})
                 )
                 
-                # Save user query with full classification data
+                # Save user query with full classification data (SAME AS BEFORE)
                 query_data = {
                     "query": user_input,
                     **classification_result
                 }
                 storage.save_user_query(query_data)
                 
-                # Save assistant answer separately
+                # Save assistant answer (SAME AS BEFORE)
                 storage.save_assistant_answer(response)
                 
-                logger.info(f"Successfully saved conversation turn - Type: {classification_result['type']}")
+                logger.info(f"Successfully saved to smart storage - Type: {classification_result['type']}")
                 
             except Exception as e:
-                st.error(f"❌ Error saving conversation: {str(e)}")
-                logger.error(f"Save error: {str(e)}")
+                st.error(f"❌ Error saving to smart storage: {str(e)}")
+                logger.error(f"Smart storage save error: {str(e)}")
         
-        # Rerun to update the chat display
+        # Rerun to update the chat display and sidebar stats
         st.rerun()
     
-    # Footer with status
+    # Footer with enhanced status
     st.markdown("---")
     st.markdown(
         "<div style='text-align: center; color: gray;'>"
-        "Travel Assistant Demo | Navan Junior AI Engineer Assignment<br>"
-        "✅ Redis Storage Active | ✅ Query Classification | ✅ Key Information Extraction"
+        "Smart Travel Assistant | Navan Junior AI Engineer Assignment<br>"
+        "✅ Smart Context Management | ✅ Type-Specific Storage | ✅ Context-Aware Prompts | ✅ Missing Info Detection"
         "</div>", 
         unsafe_allow_html=True
     )
