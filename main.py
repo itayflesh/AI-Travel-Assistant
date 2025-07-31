@@ -9,7 +9,6 @@ load_dotenv()
 # Add project root to Python path for imports
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from core.nosql_storage import NoSQLStorage
 from llm.gemini_client import GeminiClient
 from core.query_classifier import QueryClassifier
 
