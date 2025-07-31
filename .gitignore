@@ -1,0 +1,7 @@
+venv*
+.vscode*
+.env
+.DS_Store
+core/__pycache__*
+llm/__pycache__*
+storage/
