@@ -67,14 +67,8 @@ def store_key_information(storage, query_type, key_information):
         if not key_information:
             return
             
-        # Store key information based on query type
-        type_mapping = {
-            "destination_recommendations": "destination_planning",
-            "packing_suggestions": "packing",
-            "local_attractions": "attractions"
-        }
-        
-        profile_type = type_mapping.get(query_type, query_type)
+        # Use ORIGINAL query types, not mapped ones
+        profile_type = query_type  # Keep original: destination_recommendations, etc.
         
         # Store each piece of key information
         for key, value in key_information.items():
