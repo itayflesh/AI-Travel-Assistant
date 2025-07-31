@@ -11,28 +11,26 @@ logger = logging.getLogger(__name__)
 
 
 class KeyInformation(BaseModel):
-    """Pydantic model for extracted key information"""
-    destination: Optional[str] = None
-    dates: Optional[str] = None
-    budget: Optional[str] = None
-    interests: List[str] = []
-    constraints: List[str] = []
-    other: Optional[str] = None
+    """Pydantic model for extracted key information - now array-based"""
+    key_Global_information: List[str] = []
+    key_specific_type_information: List[str] = []
 
 
 class GeminiClassificationResult(BaseModel):
-    """Pydantic model for Gemini classification response"""
-    reasoning: str
+    """Pydantic model for Gemini classification response - updated structure"""
+    reasoning_for_type: str
     type: str
     external_data_needed: bool
     external_data_reason: str
-    key_information: KeyInformation
+    key_Global_information: List[str] = []
+    key_specific_type_information: List[str] = []
 
 class QueryClassifier:
     """
     Advanced query classifier that uses both LLM and pattern matching
     to determine query type, external data needs, and extract key information.
     
+    Updated to use array-based context storage for maximum flexibility.
     Demonstrates AI engineering skills for Navan assignment.
     """
     
@@ -45,7 +43,7 @@ class QueryClassifier:
         """
         self.gemini_client = gemini_client
         
-        # Pattern matching rules for each query type
+        # Pattern matching rules for each query type (unchanged)
         self.type_patterns = {
             "destination_recommendations": {
                 "keywords": [
@@ -81,7 +79,7 @@ class QueryClassifier:
             }
         }
         
-        # External data indicators
+        # External data indicators (unchanged)
         self.external_data_patterns = {
             "weather_needed": [
                 "weather", "temperature", "rain", "snow", "climate", "season",
@@ -98,13 +96,13 @@ class QueryClassifier:
     def classify_with_gemini(self, query: str) -> Dict[str, Any]:
         """
         Use Gemini LLM to classify query with advanced prompt engineering.
-        Forces classification into one of the 3 types and extracts key information.
+        Updated to extract information as arrays with key:value format.
         
         Args:
             query: User's travel query
             
         Returns:
-            Dict with type, external_data_needed, and key_information
+            Dict with type, external_data_needed, and array-based key information
         """
         
         prompt = f"""You are an expert travel query classifier. Analyze this travel query and provide a structured response.
@@ -122,30 +120,67 @@ Step 2: Which of the 3 mandatory types best matches this intent?
 Step 3: Does answering this query require external data? We ONLY have 2 external data sources: Right now WEATHER data and CURRENT LOCAL ATTRACTIONS data. If the query doesn't need right now weather information OR current attractions information, then external_data_needed should be False and external_data_type should be "none".
 Step 4: What key user preferences or information can be extracted for future personalization?
 
-KEY INFORMATION TO EXTRACT (if mentioned):
-For destination_recommendations: budget range, travel style, interests, group size, dates, constraints
-For packing_suggestions: destination, dates, activities planned, climate preferences, special needs
-For local_attractions: interests, activity level, time available, group type, budget, accessibility needs
+KEY INFORMATION EXTRACTION:
+Extract information as "key: value" formatted strings and categorize into:
+
+**key_Global_information** (shared across ALL query types):
+ONLY if you found information that is relevant to all the 3 above types, such as:
+- destination: [location name] (e.g., "destination: Tokyo", "destination: France" - the user mentions a specific place)  
+- travel_dates: [when traveling] (e.g., "travel_dates: March 2025", "travel_dates: next summer")
+- duration: [trip length] (e.g., "duration: 2 weeks", "duration: long weekend")
+- budget: [money available] (e.g., "budget: $3000", "budget: tight budget")
+- group_size: [number of people] (e.g., "group_size: 2 people", "group_size: solo travel")
+- interests: [general interests] (e.g., "interests: culture and food", "interests: adventure sports")
+
+**key_specific_type_information** (unique to the current query type):
+
+For destination_recommendations:
+- travel_style: [how they like to travel] (e.g., "travel_style: luxury", "travel_style: backpacking")
+- constraints: [limitations] (e.g., "constraints: no long flights", "constraints: visa-free countries")
+- climate_preference: [weather preference] (e.g., "climate_preference: warm beaches", "climate_preference: cool mountains")
+- other: [additional destination_recommendations key information] (e.g., "other: family-friendly", "other: romantic getaway")
+
+For packing_suggestions:
+- activities: [planned activities] (e.g., "activities: hiking and swimming", "activities: business meetings")
+- luggage_type: [bag preference] (e.g., "luggage_type: backpack", "luggage_type: suitcase")
+- special_needs: [special requirements] (e.g., "special_needs: cold weather gear", "special_needs: formal clothes")
+- laundry_availability: [washing clothes] (e.g., "laundry_availability: hotel service", "laundry_availability: none")
+- other: [additional packing_suggestions key information] (e.g., "other: traveling with kids", "other: long-term travel")
+
+For local_attractions:
+- time_available: [how much time] (e.g., "time_available: 3 days", "time_available: half day")
+- mobility: [physical capability] (e.g., "mobility: wheelchair accessible", "mobility: loves walking")
+- budget_per_activity: [spending per activity] (e.g., "budget_per_activity: $50", "budget_per_activity: free activities")
+- accessibility_needs: [special access needs] (e.g., "accessibility_needs: wheelchair ramps", "accessibility_needs: audio guides")
+- other: [additional local_attractions key information])
+
+CRITICAL EXTRACTION RULES:
+- Format each item as "key: value" (never just the value alone)
+- ONLY extract information that is explicitly mentioned by the user
+- DO NOT extract "unknown", "not specified", or similar placeholder values
+- DO NOT make assumptions about missing information
+- If the user doesn't mention something, DO NOT include it in the arrays
+- Leave arrays completely empty if no relevant information is actually provided
+- Example: If user says "I want to go to Asia" - only extract "destination: Asia", don't add travel_style, constraints, etc.
+
 
 Respond with JSON:
 {{
-    "reasoning": "brief explanation",
     "type": "one of the three types",
+    "reasoning for type": "brief explanation of why this classification",
     "external_data_needed": true/false,
     "external_data_type": "weather/attractions/both/none",
-    "external_data_reason": "explanation",
-    "key_information": {{
-        "destination": null,
-        "dates": null,
-        "budget": null,
-        "interests": [],
-        "constraints": [],
-        "other": null
-    }}
+    "external_data_reason": "explanation of why external data is/isn't needed",
+    "key_Global_information": [
+        "key: value format strings that apply to all query types"
+    ],
+    "key_specific_type_information": [
+        "key: value format strings specific to this query type only"
+    ]
 }}"""
 
         try:
-            response = self.gemini_client.generate_response(prompt, max_tokens=500)
+            response = self.gemini_client.generate_response(prompt, max_tokens=600)
             
             # Clean and parse JSON
             response_clean = response.strip()
@@ -166,8 +201,10 @@ Respond with JSON:
             self.last_raw_gemini_response = result
             
             # Validate required fields
-            if not all(key in result for key in ["type", "external_data_needed", "external_data_type", "key_information"]):
-                raise ValueError("Missing required fields in LLM response")
+            required_fields = ["type", "reasoning for type", "external_data_needed", "external_data_type", 
+                             "key_Global_information", "key_specific_type_information"]
+            if not all(key in result for key in required_fields):
+                raise ValueError(f"Missing required fields in LLM response. Got: {list(result.keys())}")
             
             # Ensure type is one of the three allowed
             valid_types = ["destination_recommendations", "packing_suggestions", "local_attractions"]
@@ -182,7 +219,16 @@ Respond with JSON:
                 result["external_data_type"] = "none"
                 result["external_data_needed"] = False
             
+            # Ensure arrays are actually arrays
+            if not isinstance(result.get("key_Global_information"), list):
+                result["key_Global_information"] = []
+            if not isinstance(result.get("key_specific_type_information"), list):
+                result["key_specific_type_information"] = []
+            
             logger.info(f"Gemini classification successful: {result['type']}")
+            logger.info(f"Global info extracted: {len(result['key_Global_information'])} items")
+            logger.info(f"Type-specific info extracted: {len(result['key_specific_type_information'])} items")
+            
             return result
                 
         except Exception as e:
@@ -193,6 +239,7 @@ Respond with JSON:
     def classify_with_patterns(self, query: str) -> Dict[str, Any]:
         """
         Use pattern matching as backup classification method.
+        Updated to handle array-based structure (but can't extract key info like LLM can).
         
         Args:
             query: User's travel query
@@ -202,7 +249,7 @@ Respond with JSON:
         """
         query_lower = query.lower()
         
-        # Calculate scores for each type
+        # Calculate scores for each type (unchanged logic)
         type_scores = {}
         
         for query_type, patterns in self.type_patterns.items():
@@ -264,7 +311,10 @@ Respond with JSON:
             "external_data_reason": external_data_reason,
             "confidence": best_score,
             "all_scores": type_scores,
-            "reasoning": f"Pattern matching: {type_scores[best_type]['matches']}"
+            "reasoning": f"Pattern matching: {type_scores[best_type]['matches']}",
+            # Pattern matching can't extract key information - only LLM can
+            "key_Global_information": [],
+            "key_specific_type_information": []
         }
         
         logger.info(f"Pattern classification: {best_type} (confidence: {best_score:.2f})")
@@ -274,7 +324,7 @@ Respond with JSON:
                               pattern_result: Dict[str, Any]) -> Dict[str, Any]:
         """
         Combine Gemini LLM and pattern matching results using confidence scoring.
-        Implements intelligent fallback and decision logic.
+        Updated to handle array-based key information structure.
         
         Args:
             gemini_result: Result from Gemini classification
@@ -295,7 +345,8 @@ Respond with JSON:
             "type": None,
             "external_data_needed": False,
             "external_data_type": "none",
-            "key_information": {},
+            "key_Global_information": [],
+            "key_specific_type_information": [],
             "confidence_score": 0.0,
             "primary_source": None,
             "reasoning": "",
@@ -341,10 +392,13 @@ Respond with JSON:
                 final_result["external_data_reason"] = pattern_result["external_data_reason"]
                 final_result["external_data_type"] = "none"
             
-            # Key information - only LLM can extract this
-            final_result["key_information"] = gemini_result.get("key_information", {})
+            # Key information - only LLM can extract this (arrays)
+            final_result["key_Global_information"] = gemini_result.get("key_Global_information", [])
+            final_result["key_specific_type_information"] = gemini_result.get("key_specific_type_information", [])
             
             logger.info(f"Combined classification: {final_result['type']} (confidence: {final_result['confidence_score']:.2f})")
+            logger.info(f"Global info: {len(final_result['key_Global_information'])} items")
+            logger.info(f"Type-specific info: {len(final_result['key_specific_type_information'])} items")
             
         except Exception as e:
             logger.error(f"Error combining classifications: {str(e)}")
@@ -352,7 +406,8 @@ Respond with JSON:
             final_result = {
                 "type": "destination_recommendations",  # Safe default
                 "external_data_needed": False,
-                "key_information": {},
+                "key_Global_information": [],
+                "key_specific_type_information": [],
                 "confidence_score": 0.1,
                 "primary_source": "fallback",
                 "reasoning": "Error in classification - using safe default",
@@ -365,12 +420,13 @@ Respond with JSON:
     def classify_query(self, query: str) -> Dict[str, Any]:
         """
         Main classification method that orchestrates the entire process.
+        Updated to handle array-based key information extraction.
         
         Args:
             query: User's travel query
             
         Returns:
-            Complete classification result with type, external data needs, and key info
+            Complete classification result with type, external data needs, and array-based key info
         """
         logger.info(f"Classifying query: {query[:50]}...")
         
@@ -394,7 +450,8 @@ Respond with JSON:
                 "type": pattern_result["type"],
                 "external_data_needed": pattern_result["external_data_needed"],
                 "external_data_type": "none",
-                "key_information": {},  # No key info without LLM
+                "key_Global_information": [],  # No key info without LLM
+                "key_specific_type_information": [],  # No key info without LLM
                 "confidence_score": pattern_result["confidence"],
                 "primary_source": "patterns_fallback",
                 "reasoning": "LLM failed - using pattern matching only",
