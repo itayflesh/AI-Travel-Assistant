@@ -66,7 +66,7 @@ def init_components():
         return None, None, None, None
 
 def display_array_context_analysis(classification_result, storage):
-    """Display enhanced context analysis for array-based storage - UI FUNCTION STAYS HERE"""
+    """Display enhanced context analysis for array-based storage"""
     if not classification_result:
         return
         
@@ -318,7 +318,6 @@ def main():
         with chat_col:
             with st.chat_message("assistant"):
                 
-                # ALL BUSINESS LOGIC MOVED TO CONVERSATION MANAGER - CLEAN!
                 with st.spinner("🔍 Processing your query..."):
                     result = conversation_manager.process_user_message(user_input)
                     
