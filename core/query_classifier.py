@@ -125,7 +125,8 @@ Extract information as "key: value" formatted strings and categorize into:
 
 **key_Global_information** (shared across ALL query types):
 ONLY if you found information that is relevant to all the 3 above types, such as:
-- destination: [location name] (e.g., "destination: Tokyo", "destination: France" - the user mentions a specific place)  
+- A particular region of the world or continent (e.g., "region: Southeast Asia", "continent: Europe")
+- destination: [location name] (e.g., "destination: Tokyo", "destination: France" - Country / Region / Continent)  
 - travel_dates: [when traveling] (e.g., "travel_dates: March 2025", "travel_dates: next summer")
 - duration: [trip length] (e.g., "duration: 2 weeks", "duration: long weekend")
 - budget: [money available] (e.g., "budget: $3000", "budget: tight budget")
@@ -135,10 +136,10 @@ ONLY if you found information that is relevant to all the 3 above types, such as
 **key_specific_type_information** (unique to the current query type):
 
 For destination_recommendations:
-- travel_style: [how they like to travel] (e.g., "travel_style: luxury", "travel_style: backpacking")
+- travel_style: [how they like to travel] (e.g., "travel_style: luxury", "travel_style: backpacking", "travel_style: romantic getaway")
 - constraints: [limitations] (e.g., "constraints: no long flights", "constraints: visa-free countries")
 - climate_preference: [weather preference] (e.g., "climate_preference: warm beaches", "climate_preference: cool mountains")
-- other: [additional destination_recommendations key information] (e.g., "other: family-friendly", "other: romantic getaway")
+- other: [additional destination_recommendations key information] (e.g., "composition of group: family-friendly")
 
 For packing_suggestions:
 - activities: [planned activities] (e.g., "activities: hiking and swimming", "activities: business meetings")

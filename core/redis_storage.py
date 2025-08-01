@@ -127,7 +127,7 @@ class GlobalContextStorage:
                 key, value = item.split(":", 1)
                 key = key.strip()
                 value = value.strip()
-                existing_dict[key] = f"{key}: {value}"
+                existing_dict[key] = value
             else:
                 remaining_items.append(item)  # Keep items that don't follow key:value format
         
@@ -138,14 +138,22 @@ class GlobalContextStorage:
                     key, value = item.split(":", 1)
                     key = key.strip()
                     value = value.strip()
-                    existing_dict[key] = f"{key}: {value}"  # Update or add
+                    
+                    if key in existing_dict:
+                        # Combine values if key already exists and value is different
+                        existing_values = existing_dict[key].split(", ")
+                        if value not in existing_values:
+                            existing_dict[key] = f"{existing_dict[key]}, {value}"
+                    else:
+                        # Add new key-value pair
+                        existing_dict[key] = value
                 else:
                     # Add non-key:value items if not already present
                     if item not in remaining_items:
                         remaining_items.append(item)
         
         # Combine updated key:value items with remaining items
-        result = list(existing_dict.values()) + remaining_items
+        result = [f"{key}: {value}" for key, value in existing_dict.items()] + remaining_items
         
         logger.debug(f"Merged arrays: {len(existing)} + {len(new)} = {len(result)} items")
         return result

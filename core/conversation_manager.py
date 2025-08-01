@@ -201,7 +201,29 @@ Please provide helpful travel advice based on the available information."""
             classification_result
         )
         
-        # Step 3: Get context data (UNCHANGED)
+        # Step 3: Save to context storage (MOVED UP)
+        if classification_result:
+            try:
+                # Extract and store using array-based method
+                self.storage.extract_and_store_key_information(
+                    classification_result["type"], 
+                    classification_result.get("key_Global_information", []),
+                    classification_result.get("key_specific_type_information", [])
+                )
+                
+                # Save user query with full classification data
+                query_data = {
+                    "query": user_input,
+                    **classification_result
+                }
+                self.storage.save_user_query(query_data)
+                
+                logger.info(f"Successfully saved to array-based context storage - Type: {classification_result['type']}")
+                
+            except Exception as e:
+                logger.error(f"Error saving to array-based context storage: {str(e)}")
+        
+        # Step 4: Get context data (UNCHANGED)
         try:
             context = self.storage.get_complete_context_for_query_type(classification_result["type"])
             global_context = context["global"]
@@ -216,7 +238,7 @@ Please provide helpful travel advice based on the available information."""
             type_specific_context = []
             recent_conversation = []
         
-        # Step 4: Route to specialized handler (NEW!)
+        # Step 5: Route to specialized handler (NEW!)
         try:
             final_prompt = self.route_to_handler(
                 query_type=classification_result["type"],
@@ -237,31 +259,15 @@ Please provide helpful travel advice based on the available information."""
             logger.error(f"Response generation failed: {str(e)}")
             response = f"I'm experiencing technical difficulties generating a response. Please try again. (Error: {str(e)})"
         
-        # Step 5: Save to context storage (UNCHANGED)
-        if classification_result and response:
+        # Step 6: Save assistant answer
+        if response:
             try:
-                # Extract and store using array-based method
-                self.storage.extract_and_store_key_information(
-                    classification_result["type"], 
-                    classification_result.get("key_Global_information", []),
-                    classification_result.get("key_specific_type_information", [])
-                )
-                
-                # Save user query with full classification data
-                query_data = {
-                    "query": user_input,
-                    **classification_result
-                }
-                self.storage.save_user_query(query_data)
-                
                 # Save assistant answer
                 self.storage.save_assistant_answer(response)
-                
-                logger.info(f"Successfully saved to array-based context storage - Type: {classification_result['type']}")
                 logger.info(f"Used specialized {classification_result['type']} handler")
                 
             except Exception as e:
-                logger.error(f"Error saving to array-based context storage: {str(e)}")
+                logger.error(f"Error saving assistant answer: {str(e)}")
         
         return {
             'classification_result': classification_result,

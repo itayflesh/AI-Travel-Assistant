@@ -6,3 +6,5 @@ core/__pycache__*
 llm/__pycache__*
 storage/
 Travel Assistant Project Structure.md
+handlers/__pycache__/*
+
