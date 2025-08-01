@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 st.set_page_config(
     page_title="Smart Travel Assistant - Navan Assignment",
     page_icon="✈️",
-    layout="centered"
+    layout="wide"  # Changed to wide for better column layout
 )
 
 # Initialize components with proper error handling
@@ -225,7 +225,7 @@ def main():
         st.error("Failed to initialize components. Please check your configuration.")
         st.stop()
     
-    # Enhanced sidebar with array-based context statistics
+    # Create layout: Sidebar + Two main columns
     with st.sidebar:
         st.markdown("### 🌍 Array-Based Context Stats")
         
@@ -313,128 +313,148 @@ def main():
             with st.expander("View Raw Classification", expanded=False):
                 st.json(st.session_state.last_raw_gemini)
     
-    # Main chat interface
-    st.markdown("### 💬 Chat with Array-Based Context Assistant")
+    # Main content area - Split into two columns
+    chat_col, prompt_col = st.columns([1, 1])  # Equal width columns
     
-    # Get and display conversation history
-    try:
-        conversation_history = storage.get_conversation_history()
-        formatted_messages = format_conversation_for_display(conversation_history)
+    # LEFT COLUMN: Chat Interface (exactly as before)
+    with chat_col:
+        st.markdown("### 💬 Chat Interface")
         
-        # Create chat container
-        chat_container = st.container()
-        
-        with chat_container:
-            # Display all previous messages
-            for message in formatted_messages:
-                if message["type"] == "user":
-                    with st.chat_message("user"):
-                        st.write(message["content"])
-                        
-                        # Show classification data if available
-                        if message.get("classification"):
-                            classification = message["classification"]
+        # Get and display conversation history
+        try:
+            conversation_history = storage.get_conversation_history()
+            formatted_messages = format_conversation_for_display(conversation_history)
+            
+            # Create chat container
+            chat_container = st.container()
+            
+            with chat_container:
+                # Display all previous messages
+                for message in formatted_messages:
+                    if message["type"] == "user":
+                        with st.chat_message("user"):
+                            st.write(message["content"])
                             
-                            with st.expander("🔍 Smart Query Analysis", expanded=False):
-                                # Main metrics
-                                col1, col2 = st.columns(2)
-                                with col1:
-                                    st.metric("Query Type", classification.get("type", "unknown"))
-                                    st.metric("Confidence", f"{classification.get('confidence_score', 0):.2f}")
+                            # Show classification data if available
+                            if message.get("classification"):
+                                classification = message["classification"]
                                 
-                                with col2:
-                                    st.metric("External Data", "Yes" if classification.get("external_data_needed") else "No")
-                                    st.metric("Source", classification.get("primary_source", "unknown"))
-                                
-                                # Show array-based information extracted
-                                global_info = classification.get("key_Global_information", [])
-                                type_info = classification.get("key_specific_type_information", [])
-                                
-                                if global_info:
-                                    st.markdown("**🌍 Global Information Extracted:**")
-                                    for info in global_info:
-                                        st.text(f"• {info}")
-                                
-                                if type_info:
-                                    st.markdown("**🎯 Type-Specific Information Extracted:**")
-                                    for info in type_info:
-                                        st.text(f"• {info}")
-                                
-                                # Reasoning
-                                st.markdown("**Classification Reasoning:**")
-                                st.text(classification.get("reasoning", "No reasoning provided"))
-                        
-                elif message["type"] == "assistant":
-                    with st.chat_message("assistant"):
-                        st.write(message["content"])
-        
-    except Exception as e:
-        st.error(f"❌ Error loading conversation history: {str(e)}")
-        formatted_messages = []
-        conversation_history = []
+                                with st.expander("🔍 Smart Query Analysis", expanded=False):
+                                    # Main metrics
+                                    col1, col2 = st.columns(2)
+                                    with col1:
+                                        st.metric("Query Type", classification.get("type", "unknown"))
+                                        st.metric("Confidence", f"{classification.get('confidence_score', 0):.2f}")
+                                    
+                                    with col2:
+                                        st.metric("External Data", "Yes" if classification.get("external_data_needed") else "No")
+                                        st.metric("Source", classification.get("primary_source", "unknown"))
+                                    
+                                    # Show array-based information extracted
+                                    global_info = classification.get("key_Global_information", [])
+                                    type_info = classification.get("key_specific_type_information", [])
+                                    
+                                    if global_info:
+                                        st.markdown("**🌍 Global Information Extracted:**")
+                                        for info in global_info:
+                                            st.text(f"• {info}")
+                                    
+                                    if type_info:
+                                        st.markdown("**🎯 Type-Specific Information Extracted:**")
+                                        for info in type_info:
+                                            st.text(f"• {info}")
+                                    
+                                    # Reasoning
+                                    st.markdown("**Classification Reasoning:**")
+                                    st.text(classification.get("reasoning", "No reasoning provided"))
+                            
+                    elif message["type"] == "assistant":
+                        with st.chat_message("assistant"):
+                            st.write(message["content"])
+            
+        except Exception as e:
+            st.error(f"❌ Error loading conversation history: {str(e)}")
+            formatted_messages = []
+            conversation_history = []
     
-    # Chat input
+    # RIGHT COLUMN: Final Prompt Display
+    with prompt_col:
+        st.markdown("### 🤖 Final Prompt to Gemini")
+        
+        # Show the last prompt if available
+        if hasattr(st.session_state, 'last_final_prompt') and st.session_state.last_final_prompt:
+            st.code(st.session_state.last_final_prompt, language="text")
+        else:
+            st.info("The final prompt sent to Gemini will appear here after you ask a question.")
+    
+    # Chat input (spans both columns)
     user_input = st.chat_input("Ask me anything about travel planning...")
     
     if user_input:
-        # Display user message immediately
-        with st.chat_message("user"):
-            st.write(user_input)
+        # Display user message immediately in chat column
+        with chat_col:
+            with st.chat_message("user"):
+                st.write(user_input)
         
         # Process and respond
-        with st.chat_message("assistant"):
-            classification_result = None
-            response = None
-            
-            # Step 1: Classify the query
-            with st.spinner("🔍 Analyzing your query with array-based extraction..."):
-                try:
-                    classification_result = classifier.classify_query(user_input)
+        with chat_col:
+            with st.chat_message("assistant"):
+                classification_result = None
+                response = None
+                final_prompt = None
+                
+                # Step 1: Classify the query
+                with st.spinner("🔍 Analyzing your query with array-based extraction..."):
+                    try:
+                        classification_result = classifier.classify_query(user_input)
 
-                    # Store raw Gemini response for debugging
-                    if hasattr(classifier, 'last_raw_gemini_response') and classifier.last_raw_gemini_response:
-                        st.session_state.last_raw_gemini = classifier.last_raw_gemini_response
-                    
-                except Exception as e:
-                    st.error(f"❌ Classification failed: {str(e)}")
-                    classification_result = {
-                        "type": "destination_recommendations",  # Safe fallback
-                        "external_data_needed": False,
-                        "external_data_type": "none",
-                        "key_Global_information": [],
-                        "key_specific_type_information": [],
-                        "confidence_score": 0.1,
-                        "primary_source": "fallback",
-                        "reasoning": f"Classification error - using fallback: {str(e)}",
-                        "fallback_used": True,
-                        "error": str(e)
-                    }
-            
-            # Step 2: Generate array context-aware response
-            with st.spinner("🧠 Generating array context-aware response..."):
-                try:
-                    # Build array context-aware prompt
-                    context_prompt = build_array_context_aware_prompt(
-                        storage, 
-                        classification_result["type"], 
-                        user_input
-                    )
-                    
-                    # Generate response using the enhanced context-aware prompt
-                    response = gemini.generate_response(context_prompt, max_tokens=800)
-                    
-                    if not response or len(response.strip()) == 0:
-                        response = "I apologize, but I couldn't generate a proper response. Please try rephrasing your question."
-                    
-                except Exception as e:
-                    st.error(f"❌ Response generation failed: {str(e)}")
-                    response = f"I'm experiencing technical difficulties generating a response. Please try again. (Error: {str(e)})"
-            
-            # Display the response
-            st.write(response)
-            
-            # Show enhanced array-based context analysis
-            display_array_context_analysis(classification_result, storage)
+                        # Store raw Gemini response for debugging
+                        if hasattr(classifier, 'last_raw_gemini_response') and classifier.last_raw_gemini_response:
+                            st.session_state.last_raw_gemini = classifier.last_raw_gemini_response
+                        
+                    except Exception as e:
+                        st.error(f"❌ Classification failed: {str(e)}")
+                        classification_result = {
+                            "type": "destination_recommendations",  # Safe fallback
+                            "external_data_needed": False,
+                            "external_data_type": "none",
+                            "key_Global_information": [],
+                            "key_specific_type_information": [],
+                            "confidence_score": 0.1,
+                            "primary_source": "fallback",
+                            "reasoning": f"Classification error - using fallback: {str(e)}",
+                            "fallback_used": True,
+                            "error": str(e)
+                        }
+                
+                # Step 2: Generate array context-aware response
+                with st.spinner("🧠 Generating array context-aware response..."):
+                    try:
+                        # Build array context-aware prompt
+                        final_prompt = build_array_context_aware_prompt(
+                            storage, 
+                            classification_result["type"], 
+                            user_input
+                        )
+                        
+                        # Store the final prompt for display
+                        st.session_state.last_final_prompt = final_prompt
+                        
+                        # Generate response using the enhanced context-aware prompt
+                        response = gemini.generate_response(final_prompt, max_tokens=800)
+                        
+                        if not response or len(response.strip()) == 0:
+                            response = "I apologize, but I couldn't generate a proper response. Please try rephrasing your question."
+                        
+                    except Exception as e:
+                        st.error(f"❌ Response generation failed: {str(e)}")
+                        response = f"I'm experiencing technical difficulties generating a response. Please try again. (Error: {str(e)})"
+                
+                # Display the response
+                st.write(response)
+                
+                # Show enhanced array-based context analysis
+                display_array_context_analysis(classification_result, storage)
         
         # Step 3: Save to Array-Based Context Storage
         if classification_result and response:
@@ -464,7 +484,7 @@ def main():
                 st.error(f"❌ Error saving to array-based context storage: {str(e)}")
                 logger.error(f"Array-based context storage save error: {str(e)}")
         
-        # Rerun to update the chat display and sidebar stats
+        # Rerun to update the display
         st.rerun()
     
     # Footer with enhanced status

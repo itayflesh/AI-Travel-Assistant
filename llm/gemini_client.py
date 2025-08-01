@@ -86,7 +86,7 @@ class GeminiClient:
         context = ""
         if conversation_history:
             # Only include last few messages to avoid token limits
-            recent_messages = conversation_history[-3:]  # Last 3 turns
+            recent_messages = conversation_history[-10:]  # Last 10 turns
             for msg in recent_messages:
                 context += f"User: {msg.get('user', '')}\nAssistant: {msg.get('assistant', '')}\n"
         
