@@ -8,8 +8,8 @@ load_dotenv()
 API_KEY = os.getenv("AMADEUS_API_KEY")
 API_SECRET = os.getenv("AMADEUS_API_SECRET")
 
-RADIUS = 10  # in kilometers
-LIMIT = 20   # max activities to return
+RADIUS = 20  # in kilometers
+LIMIT = 50   # max activities to return
 
 # --- STEP 1: GET ACCESS TOKEN ---
 def get_access_token():
