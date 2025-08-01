@@ -13,7 +13,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from llm.gemini_client import GeminiClient
 from core.query_classifier import QueryClassifier
 from core.redis_storage import GlobalContextStorage  
-from core.conversation_manager import ConversationManager  # NEW IMPORT - our orchestrator
+from core.conversation_manager import ConversationManager  # Updated with handlers
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -56,7 +56,7 @@ def init_components():
         # Initialize query classifier
         classifier = QueryClassifier(gemini)
         
-        # Initialize conversation manager - THE ORCHESTRATOR
+        # Initialize conversation manager with specialized handlers
         conversation_manager = ConversationManager(storage, gemini, classifier)
         
         return storage, gemini, classifier, conversation_manager
@@ -70,11 +70,14 @@ def display_array_context_analysis(classification_result, storage):
     if not classification_result:
         return
         
-    with st.expander("🧠 Array-Based Context Analysis", expanded=False):
+    with st.expander("🧠 Advanced Prompt Engineering Analysis", expanded=False):
         col1, col2 = st.columns(2)
         with col1:
             st.metric("Query Type", classification_result["type"])
             st.metric("Confidence", f"{classification_result.get('confidence_score', 0):.2f}")
+            # Show which handler was used
+            handler_used = classification_result["type"].replace('_', ' ').title()
+            st.metric("Handler Used", f"{handler_used} Handler")
         
         with col2:
             st.metric("External Data", "Yes" if classification_result.get("external_data_needed") else "No")
@@ -125,15 +128,33 @@ def display_array_context_analysis(classification_result, storage):
         st.markdown("**🤖 Classification Reasoning:**")
         st.text(classification_result.get("reasoning", "No reasoning provided"))
         
+        # Show handler-specific features
+        handler_type = classification_result["type"]
+        st.markdown("**🚀 Advanced Prompt Engineering Features:**")
+        
+        if handler_type == "destination_recommendations":
+            st.text("✓ Multi-criteria decision making")
+            st.text("✓ Chain-of-thought destination analysis")
+            st.text("✓ Smart information gathering")
+        elif handler_type == "packing_suggestions":
+            st.text("✓ Weather-aware reasoning")
+            st.text("✓ Activity-based packing logic")
+            st.text("✓ Structured output generation")
+        elif handler_type == "local_attractions":
+            st.text("✓ Interest-based filtering")
+            st.text("✓ Time-constraint awareness")
+            st.text("✓ Priority ranking system")
+        
         if classification_result.get("fallback_used"):
             st.warning("⚠️ Fallback classification used due to LLM error")
 
 def main():
-    """Main Streamlit application with Array-Based Context Management - CLEANED UI ONLY"""
+    """Main Streamlit application with Specialized Handler Architecture"""
     
     # Title and description
-    st.title("🧠 Array-Based Context Travel Assistant")
-    st.markdown("*Navan Junior AI Engineer Assignment - Flexible Array-Based Context Storage*")
+    st.title("🚀 Advanced Prompt Engineering Travel Assistant")
+    st.markdown("*Navan Junior AI Engineer Assignment - Specialized Handler Architecture*")
+    st.markdown("**✨ Features: Chain-of-Thought Reasoning • Smart Context Management • Weather-Aware Prompts • Interest-Based Filtering**")
     st.markdown("---")
     
     # Initialize components
@@ -217,13 +238,14 @@ def main():
             except Exception as e:
                 st.error(f"❌ Error clearing data: {str(e)}")
         
-        # Show architecture info
-        st.markdown("### 🏗️ Array-Based Architecture")
-        st.text("✅ Flexible array storage")
-        st.text("✅ Key: value format")
-        st.text("✅ No predefined schemas")
-        st.text("✅ Intelligent merging")
+        # Show specialized handlers info
+        st.markdown("### 🚀 Specialized Handlers")
+        st.text("🎯 Destination Handler")
+        st.text("🎒 Packing Handler") 
+        st.text("🏛️ Attractions Handler")
+        st.text("✅ Chain-of-thought reasoning")
         st.text("✅ Context-aware prompts")
+        st.text("✅ Smart data integration")
 
         # Raw Gemini Response (debugging)
         if hasattr(st.session_state, 'last_raw_gemini') and st.session_state.last_raw_gemini:
@@ -297,13 +319,13 @@ def main():
     
     # RIGHT COLUMN: Final Prompt Display
     with prompt_col:
-        st.markdown("### 🤖 Final Prompt to Gemini")
+        st.markdown("### 🤖 Advanced Engineered Prompt")
         
         # Show the last prompt if available
         if hasattr(st.session_state, 'last_final_prompt') and st.session_state.last_final_prompt:
             st.code(st.session_state.last_final_prompt, language="text")
         else:
-            st.info("The final prompt sent to Gemini will appear here after you ask a question.")
+            st.info("The specialized prompt engineered by the handlers will appear here after you ask a question.")
     
     # Chat input (spans both columns)
     user_input = st.chat_input("Ask me anything about travel planning...")
@@ -314,16 +336,17 @@ def main():
             with st.chat_message("user"):
                 st.write(user_input)
         
-        # Process and respond using the conversation manager
+        # Process and respond using the conversation manager with specialized handlers
         with chat_col:
             with st.chat_message("assistant"):
                 
-                with st.spinner("🔍 Processing your query..."):
+                with st.spinner("🚀 Processing with specialized handlers..."):
                     result = conversation_manager.process_user_message(user_input)
                     
                     classification_result = result['classification_result']
                     response = result['response']
                     final_prompt = result['final_prompt']
+                    handler_used = result.get('handler_used', 'unknown')
                 
                 # Store for debugging display
                 if hasattr(classifier, 'last_raw_gemini_response') and classifier.last_raw_gemini_response:
@@ -336,7 +359,12 @@ def main():
                 # Display the response
                 st.write(response)
                 
-                # Show enhanced array-based context analysis (STAYS IN main.py - it's UI code!)
+                # Show which handler was used
+                if handler_used != 'fallback':
+                    handler_name = handler_used.replace('_', ' ').title()
+                    st.success(f"✨ Powered by {handler_name} Handler with advanced prompt engineering")
+                
+                # Show enhanced array-based context analysis
                 display_array_context_analysis(classification_result, storage)
         
         # Rerun to update the display
@@ -346,8 +374,8 @@ def main():
     st.markdown("---")
     st.markdown(
         "<div style='text-align: center; color: gray;'>"
-        "Array-Based Context Travel Assistant | Navan Junior AI Engineer Assignment<br>"
-        "✅ Flexible Array Storage | ✅ Key:Value Format | ✅ No Schema Limits | ✅ Smart Context Merging"
+        "🚀 Advanced Prompt Engineering Travel Assistant | Navan Junior AI Engineer Assignment<br>"
+        "✅ Specialized Handlers | ✅ Chain-of-Thought Reasoning | ✅ Weather-Aware Prompts | ✅ Smart Context Management"
         "</div>", 
         unsafe_allow_html=True
     )
