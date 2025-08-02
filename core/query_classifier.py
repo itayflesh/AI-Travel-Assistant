@@ -97,7 +97,7 @@ class QueryClassifier:
 
         self.last_raw_gemini_response = None
     
-    def classify_with_gemini(self, query: str) -> Dict[str, Any]:
+    def classify_with_gemini(self, query: str, conversation_history: List[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Use Gemini LLM to classify query with advanced prompt engineering.
         Updated to extract information as arrays with key:value format for ALL types.
@@ -108,10 +108,27 @@ class QueryClassifier:
         Returns:
             Dict with type, external_data_needed, and array-based key information for all types
         """
-        
-        prompt = f"""You are an expert travel query classifier. Analyze this travel query and provide a structured response.
+    # Build conversation context if history is available
+        conversation_context = ""
+        if conversation_history and len(conversation_history) > 0:
+            # Get last 6 messages (3 exchanges) to avoid making prompt too long
+            recent_messages = conversation_history[-6:]
+            
+            conversation_context = "\nCONVERSATION CONTEXT:\n"
+            for msg in recent_messages:
+                if "user_query" in msg:
+                    conversation_context += f"User: {msg['user_query']}\n"
+                elif "assistant_answer" in msg:
+                    # Truncate long responses to keep prompt manageable
+                    answer = msg['assistant_answer']
+                    # if len(answer) > 150:
+                    #     answer = answer[:150] + "..."
+                    conversation_context += f"Assistant: {answer}\n"
+            conversation_context += "\n"
 
-QUERY: "{query}"
+            prompt = f"""You are an expert travel query classifier. Analyze this travel query and provide a structured response.
+
+{conversation_context}CURRENT QUERY: "{query}"
 
 MANDATORY CLASSIFICATION TYPES (you MUST choose exactly one):
 1. "destination_recommendations" - asking where to go, travel suggestions, destination advice
