@@ -10,6 +10,9 @@ from handlers.destination_handler import DestinationHandler
 from handlers.packing_handler import PackingHandler
 from handlers.attractions_handler import AttractionsHandler
 
+# Import external APIs
+from external_apis.attraction_api import get_attractions_for_destination
+
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -109,9 +112,67 @@ User query: "{user_query}"
 
 Please provide helpful travel advice based on the available information."""
     
+    def _extract_destination_from_context(self, classification_result: Dict[str, Any]) -> Optional[str]:
+        """
+        Extract destination from classification result for external API calls.
+        
+        Args:
+            classification_result: The query classification result
+            
+        Returns:
+            Destination string or None if not found
+        """
+        try:
+            # Check global information first
+            global_info = classification_result.get("key_Global_information", [])
+            for info in global_info:
+                if info.lower().startswith("destination:"):
+                    destination = info.split(":", 1)[1].strip()
+                    if destination:
+                        logger.info(f"Found destination in global context: {destination}")
+                        return destination
+            
+            # Check type-specific information
+            type_info = classification_result.get("key_specific_type_information", [])
+            for info in type_info:
+                if info.lower().startswith("destination:"):
+                    destination = info.split(":", 1)[1].strip()
+                    if destination:
+                        logger.info(f"Found destination in type-specific context: {destination}")
+                        return destination
+            
+            # Try to extract from the original query as fallback
+            query = classification_result.get("query", "")
+            # Simple extraction patterns for common queries
+            import re
+            
+            # Patterns like "things to do in Paris", "attractions in Rome"
+            patterns = [
+                r"in\s+([A-Za-z\s]+?)(?:\s*[,.]|$)",
+                r"visit\s+([A-Za-z\s]+?)(?:\s*[,.]|$)",
+                r"go\s+to\s+([A-Za-z\s]+?)(?:\s*[,.]|$)"
+            ]
+            
+            for pattern in patterns:
+                match = re.search(pattern, query, re.IGNORECASE)
+                if match:
+                    destination = match.group(1).strip()
+                    if len(destination) > 2:  # Avoid single words
+                        logger.info(f"Extracted destination from query: {destination}")
+                        return destination
+            
+            logger.info("No destination found in classification result")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error extracting destination: {str(e)}")
+            return None
+    
     def get_external_data_for_query_type(self, query_type: str, classification_result: Dict[str, Any]) -> Dict[str, Any]:
         """
         Get relevant external data based on query type and classification.
+        
+        UPDATED: Now includes attractions API integration with Redis caching.
         
         This ensures handlers receive the right external data for their specialized prompts.
         """
@@ -124,22 +185,67 @@ Please provide helpful travel advice based on the available information."""
             
             external_data_type = classification_result.get("external_data_type", "none")
             
-            # Get weather data for packing suggestions
+            # Get weather data for packing suggestions (EXISTING)
             if query_type == "packing_suggestions" and external_data_type in ["weather", "both"]:
                 weather_data = self.storage.get_external_data("weather_external_data")
                 if weather_data:
                     external_data["weather"] = weather_data
                     logger.info("Added weather data for packing handler")
             
-            # Get attractions data for local attractions
+            # Get attractions data for local attractions (NEW!)
             elif query_type == "local_attractions" and external_data_type in ["attractions", "both"]:
+                # First check Redis cache
+                attractions_data = self.storage.get_external_data("attractions_external_data")
+                
+                if attractions_data:
+                    external_data["attractions"] = attractions_data
+                    logger.info("Using cached attractions data for attractions handler")
+                else:
+                    # Cache miss - fetch from API and store in Redis
+                    destination = self._extract_destination_from_context(classification_result)
+                    
+                    if destination:
+                        logger.info(f"Fetching fresh attractions data for: {destination}")
+                        attractions_result = get_attractions_for_destination(destination)
+                        
+                        if attractions_result.get("success"):
+                            # Store in Redis with 1-hour TTL
+                            self.storage.save_external_data("attractions_external_data", attractions_result)
+                            external_data["attractions"] = attractions_result
+                            logger.info(f"Fetched and cached {attractions_result.get('total_found', 0)} attractions for {destination}")
+                        else:
+                            # API failed - log error but don't crash
+                            logger.error(f"Attractions API failed: {attractions_result.get('error')}")
+                            # Don't add to external_data, handler will work without it
+                    else:
+                        logger.warning("No destination found for attractions query - skipping API call")
+            
+            # Handle "both" data type (weather + attractions)
+            elif external_data_type == "both":
+                # Get weather data
+                weather_data = self.storage.get_external_data("weather_external_data")
+                if weather_data:
+                    external_data["weather"] = weather_data
+                    logger.info("Added weather data for combined handler")
+                
+                # Get attractions data
                 attractions_data = self.storage.get_external_data("attractions_external_data")
                 if attractions_data:
                     external_data["attractions"] = attractions_data
-                    logger.info("Added attractions data for attractions handler")
+                    logger.info("Added cached attractions data for combined handler")
+                else:
+                    # Try to fetch attractions if destination available
+                    destination = self._extract_destination_from_context(classification_result)
+                    if destination:
+                        attractions_result = get_attractions_for_destination(destination)
+                        if attractions_result.get("success"):
+                            self.storage.save_external_data("attractions_external_data", attractions_result)
+                            external_data["attractions"] = attractions_result
+                            logger.info("Fetched and cached attractions for combined handler")
             
         except Exception as e:
             logger.error(f"Error getting external data for {query_type}: {str(e)}")
+            # Don't crash - return whatever external_data we have
         
         return external_data
     
@@ -169,7 +275,7 @@ Please provide helpful travel advice based on the available information."""
 
     def process_user_message(self, user_input):
         """
-        UPDATED: Main processing logic now uses specialized handlers.
+        UPDATED: Main processing logic now uses specialized handlers + attractions API.
         
         This replaces the old generic prompt building with advanced handler routing.
         """
@@ -195,7 +301,7 @@ Please provide helpful travel advice based on the available information."""
                 "error": str(e)
             }
         
-        # Step 2: Get external data if needed (UPDATED)
+        # Step 2: Get external data if needed (UPDATED WITH ATTRACTIONS)
         external_data = self.get_external_data_for_query_type(
             classification_result["type"], 
             classification_result
@@ -238,14 +344,14 @@ Please provide helpful travel advice based on the available information."""
             type_specific_context = []
             recent_conversation = []
         
-        # Step 5: Route to specialized handler (NEW!)
+        # Step 5: Route to specialized handler (ENHANCED WITH ATTRACTIONS DATA)
         try:
             final_prompt = self.route_to_handler(
                 query_type=classification_result["type"],
                 user_query=user_input,
                 global_context=global_context,
                 type_specific_context=type_specific_context,
-                external_data=external_data,
+                external_data=external_data,  # Now includes attractions data when available
                 recent_conversation=recent_conversation
             )
             
