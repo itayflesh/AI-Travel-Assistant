@@ -369,7 +369,7 @@ class GlobalContextStorage:
         logger.info("Saved assistant answer")
     
     def save_external_data(self, data_type: str, data: Dict[str, Any]):
-        """Save external API data with timestamp for caching"""
+        """Save external API data with timestamp for caching - FIXED TTL"""
         valid_types = ["weather_external_data", "attractions_external_data"]
         
         if data_type not in valid_types:
@@ -378,14 +378,52 @@ class GlobalContextStorage:
         
         storage_key = f"{self.session_key}:{data_type}"
         
+        # Define TTL in seconds
+        ttl_seconds = 3600  # 1 hour
+        
         cached_data = {
             "data": data,
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "expires_in": 3600  # 1 hour default
+            "expires_in": ttl_seconds  # Keep as metadata for manual checking
         }
         
-        self.redis_client.set(storage_key, json.dumps(cached_data))
-        logger.info(f"Saved external data: {data_type}")
+        # FIXED: Use setex() to set both value AND TTL in one atomic operation
+        self.redis_client.setex(storage_key, ttl_seconds, json.dumps(cached_data))
+        
+        logger.info(f"Saved external data: {data_type} with {ttl_seconds}s TTL")
+    
+    def get_external_data(self, data_type: str) -> Optional[Dict[str, Any]]:
+        """Get external API data if not expired - IMPROVED"""
+        storage_key = f"{self.session_key}:{data_type}"
+        
+        try:
+            data = self.redis_client.get(storage_key)
+            if not data:
+                logger.info(f"External data not found or expired: {data_type}")
+                return None
+            
+            cached_data = json.loads(data)
+            
+            # IMPROVED: Still check timestamp as backup, but Redis TTL is primary
+            timestamp = datetime.fromisoformat(cached_data["timestamp"].replace('Z', '+00:00'))
+            expires_in = cached_data.get("expires_in", 3600)
+            
+            # Check if manually expired (backup check)
+            if (datetime.now(timezone.utc) - timestamp).total_seconds() > expires_in:
+                logger.info(f"External data manually expired: {data_type}")
+                # Clean up the expired key
+                self.redis_client.delete(storage_key)
+                return None
+            
+            # IMPROVED: Log TTL info for debugging
+            ttl_remaining = self.redis_client.ttl(storage_key)
+            logger.info(f"Retrieved external data: {data_type} (TTL remaining: {ttl_remaining}s)")
+            
+            return cached_data["data"]
+            
+        except Exception as e:
+            logger.error(f"Error getting external data {data_type}: {str(e)}")
+            return None
     
     def get_external_data(self, data_type: str) -> Optional[Dict[str, Any]]:
         """Get external API data if not expired"""

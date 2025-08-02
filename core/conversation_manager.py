@@ -116,25 +116,38 @@ Please provide helpful travel advice based on the available information."""
         """
         Extract destination from classification result for external API calls.
         
-        Args:
-            classification_result: The query classification result
-            
-        Returns:
-            Destination string or None if not found
+        DEBUGGING: Added extensive logging to see what's happening.
         """
         try:
+            # DEBUG: Log the entire classification result
+            logger.info(f"=== DEBUGGING DESTINATION EXTRACTION ===")
+            logger.info(f"Full classification result: {classification_result}")
+            
             # Check global information first
             global_info = classification_result.get("key_Global_information", [])
-            for info in global_info:
+            logger.info(f"Global info array: {global_info}")
+            logger.info(f"Global info type: {type(global_info)}")
+            
+            for i, info in enumerate(global_info):
+                logger.info(f"Processing global info item {i}: '{info}' (type: {type(info)})")
+                logger.info(f"Lowercase version: '{info.lower()}'")
+                logger.info(f"Starts with 'destination:'? {info.lower().startswith('destination:')}")
+                
                 if info.lower().startswith("destination:"):
                     destination = info.split(":", 1)[1].strip()
+                    logger.info(f"Extracted destination: '{destination}'")
                     if destination:
-                        logger.info(f"Found destination in global context: {destination}")
+                        logger.info(f"SUCCESS: Found destination in global context: {destination}")
                         return destination
+                    else:
+                        logger.warning(f"Destination was empty after extraction from: '{info}'")
             
             # Check type-specific information
             type_info = classification_result.get("key_specific_type_information", [])
+            logger.info(f"Type-specific info: {type_info}")
+            
             for info in type_info:
+                logger.info(f"Processing type-specific item: '{info}'")
                 if info.lower().startswith("destination:"):
                     destination = info.split(":", 1)[1].strip()
                     if destination:
@@ -143,11 +156,14 @@ Please provide helpful travel advice based on the available information."""
             
             # Try to extract from the original query as fallback
             query = classification_result.get("query", "")
+            logger.info(f"Fallback: trying to extract from query: '{query}'")
+            
             # Simple extraction patterns for common queries
             import re
             
             # Patterns like "things to do in Paris", "attractions in Rome"
             patterns = [
+                r"(?:fly|travel|go|visit)\s+to\s+([A-Za-z\s]+?)(?:\s*(?:but|and|,|\.|$))",
                 r"in\s+([A-Za-z\s]+?)(?:\s*[,.]|$)",
                 r"visit\s+([A-Za-z\s]+?)(?:\s*[,.]|$)",
                 r"go\s+to\s+([A-Za-z\s]+?)(?:\s*[,.]|$)"
@@ -158,14 +174,14 @@ Please provide helpful travel advice based on the available information."""
                 if match:
                     destination = match.group(1).strip()
                     if len(destination) > 2:  # Avoid single words
-                        logger.info(f"Extracted destination from query: {destination}")
+                        logger.info(f"FALLBACK SUCCESS: Extracted destination from query: {destination}")
                         return destination
             
-            logger.info("No destination found in classification result")
+            logger.warning("FAILED: No destination found in classification result")
             return None
             
         except Exception as e:
-            logger.error(f"Error extracting destination: {str(e)}")
+            logger.error(f"ERROR in destination extraction: {str(e)}")
             return None
     
     def get_external_data_for_query_type(self, query_type: str, classification_result: Dict[str, Any]) -> Dict[str, Any]:
