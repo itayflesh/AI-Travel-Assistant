@@ -528,7 +528,6 @@ class DestinationHandler:
             prompt_parts.append("CURRENT WEATHER DATA:")
             prompt_parts.append(f"• Location: {weather.get('location', 'Unknown')}")
             prompt_parts.append(f"• Current: {weather.get('current_weather', {}).get('temperature', 'N/A')}°C, {weather.get('current_weather', {}).get('description', 'N/A')}")
-            prompt_parts.append(f"• Relevance: {external_relevance['weather_reason']}")
             prompt_parts.append("")
         
         if external_relevance["use_attractions"] and "attractions" in external_data:
