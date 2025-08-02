@@ -564,9 +564,9 @@ class AttractionsHandler:
         # 5. External data (ONLY if determined to be relevant)
         if external_relevance["use_attractions"] and "attractions" in external_data:
             attractions = external_data["attractions"]
-            prompt_parts.append("CURRENT ATTRACTIONS DATA:")
+            prompt_parts.append("CURRENT ATTRACTIONS DATA: (the user DOES NOT see this)")
             prompt_parts.append(f"• Destination: {attractions.get('destination', 'Unknown')}")
-            prompt_parts.append(f"• Total attractions found: {attractions.get('total_found', 0)}")
+            # REMOVED: prompt_parts.append(f"• Total attractions found: {attractions.get('total_found', 0)}")
             
             # Include actual attractions data if available
             attractions_list = attractions.get('attractions', [])
@@ -575,7 +575,17 @@ class AttractionsHandler:
                 for i, attraction in enumerate(attractions_list[:20], 1):  # Limit to 20 for prompt efficiency
                     name = attraction.get('name', 'Unknown')
                     price = attraction.get('price', 'Price not available')
-                    prompt_parts.append(f"  {i}. {name} - {price}")
+                    description = attraction.get('description', '').strip()
+                    
+                    # ADDED: Include description snippet after price
+                    if description:
+                        # Limit description to first 100 characters for prompt efficiency
+                        description_snippet = description[:100]
+                        if len(description) > 100:
+                            description_snippet += "..."
+                        prompt_parts.append(f"  {i}. {name} - {price} - {description_snippet}")
+                    else:
+                        prompt_parts.append(f"  {i}. {name} - {price}")
                 
                 if len(attractions_list) > 20:
                     prompt_parts.append(f"  ... and {len(attractions_list) - 20} more attractions")

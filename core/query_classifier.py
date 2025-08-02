@@ -121,7 +121,7 @@ MANDATORY CLASSIFICATION TYPES (you MUST choose exactly one):
 ANALYSIS FRAMEWORK:
 Step 1: What is the user's primary intent?
 Step 2: Which of the 3 mandatory types best matches this intent?
-Step 3: Does Right NOW WEATHER external data or LOCAL ATTRACTIONS external data is needed for answering this query?. If the query doesn't need 'right now' weather information OR attractions information, then external_data_needed should be False and external_data_type should be "none". there is NO any other external data sources! 
+Step 3: Does answering this query require external data? We ONLY have 2 external data sources: Right NOW + 5 days forecast WEATHER data and CURRENT LOCAL ATTRACTIONS data. If the query doesn't need right now weather information OR current attractions information, then external_data_needed should be False and external_data_type should be "none".
 Step 4: What key user preferences or information can be extracted for future personalization?
 
 KEY INFORMATION EXTRACTION:
@@ -171,7 +171,7 @@ CRITICAL EXTRACTION RULES:
 - Leave arrays completely empty if no relevant information is actually provided
 - Example: If user says "I want to go to Asia" - only extract "destination: Asia", don't add travel_style, constraints, etc.
 
-Respond with JSON:
+Respond with this specific JSON:
 {{
     "type": "one of the three types",
     "reasoning for type": "brief explanation of why this classification",
@@ -193,7 +193,7 @@ Respond with JSON:
 }}"""
 
         try:
-            response = self.gemini_client.generate_response(prompt, max_tokens=600)
+            response = self.gemini_client.generate_response(prompt)
             
             # Clean and parse JSON
             response_clean = response.strip()

@@ -14,7 +14,7 @@ API_KEY = os.getenv("AMADEUS_API_KEY")
 API_SECRET = os.getenv("AMADEUS_API_SECRET")
 
 RADIUS = 20  # in kilometers
-LIMIT = 10   # Reduced from 50 to 10 for prompt efficiency
+LIMIT = 20   # 20 activities per request
 
 def get_tourism_center_coordinates(destination, gemini_client):
     """
