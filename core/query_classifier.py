@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class KeyInformation(BaseModel):
-    """Pydantic model for extracted key information - now array-based"""
+    """Simple structure for the key info we extract from user queries"""
     key_Global_information: List[str] = []
     key_specific_destination_recommendations_information: List[str] = []
     key_specific_packing_suggestions_information: List[str] = []
@@ -19,7 +19,7 @@ class KeyInformation(BaseModel):
 
 
 class GeminiClassificationResult(BaseModel):
-    """Pydantic model for Gemini classification response - updated structure"""
+    """What we expect back from Gemini when it classifies a query"""
     reasoning_for_type: str
     type: str
     external_data_needed: bool
@@ -31,23 +31,18 @@ class GeminiClassificationResult(BaseModel):
 
 class QueryClassifier:
     """
-    Advanced query classifier that uses both LLM and pattern matching
-    to determine query type, external data needs, and extract key information.
+    Figures out what type of travel question someone is asking and pulls out useful info.
     
-    Updated to use array-based context storage for maximum flexibility.
-    Demonstrates AI engineering skills for Navan assignment.
+    We use both Gemini and some basic pattern matching (as backup).
+    The goal is to categorize queries into destination_recommendations, packing_suggestions,
+    or local_attractions, plus extract any useful details for personalization.
     """
     
     def __init__(self, gemini_client):
-        """
-        Initialize the query classifier
-        
-        Args:
-            gemini_client: Initialized GeminiClient instance
-        """
+        """Set up the classifier with our Gemini client and some pattern matching rules"""
         self.gemini_client = gemini_client
         
-        # Pattern matching rules for each query type (unchanged)
+        # Basic keyword patterns for when Gemini isn't available
         self.type_patterns = {
             "destination_recommendations": {
                 "keywords": [
@@ -83,7 +78,7 @@ class QueryClassifier:
             }
         }
         
-        # External data indicators (unchanged)
+        # Words that suggest we need to hit external APIs
         self.external_data_patterns = {
             "weather_needed": [
                 "weather", "temperature", "rain", "snow", "climate", "season",
@@ -99,19 +94,22 @@ class QueryClassifier:
     
     def classify_with_gemini(self, query: str, conversation_history: List[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
-        Use Gemini LLM to classify query with advanced prompt engineering.
-        Updated to extract information as arrays with key:value format for ALL types.
+        Use Gemini to classify the query and extract useful info.
         
-        Args:
-            query: User's travel query
-            
-        Returns:
-            Dict with type, external_data_needed, and array-based key information for all types
+        We give Gemini a detailed prompt that asks it to:
+        1. Figure out what type of travel question this is
+        2. Decide if we need to fetch external data (weather/attractions)
+        3. Pull out any useful details for future personalization
+        
+        We extract info for ALL query types, not just the primary one. 
+        So if someone asks "where can I go that doesn't require much packing",
+        that's primarily a destination question, but we also save the packing preference.
+
         """
-        # Build conversation context if history is available
+        # Build conversation context if we have chat history
         conversation_context = ""
         if conversation_history and len(conversation_history) > 0:
-            # Get last 6 messages (3 exchanges) to avoid making prompt too long
+            # Keep it recent to avoid overwhelming the prompt
             recent_messages = conversation_history[-6:]
             
             conversation_context = "\nCONVERSATION CONTEXT:\n"
@@ -119,14 +117,11 @@ class QueryClassifier:
                 if "user_query" in msg:
                     conversation_context += f"User: {msg['user_query']}\n"
                 elif "assistant_answer" in msg:
-                    # Truncate long responses to keep prompt manageable
                     answer = msg['assistant_answer']
-                    # if len(answer) > 150:
-                    #     answer = answer[:150] + "..."
                     conversation_context += f"Assistant: {answer}\n"
             conversation_context += "\n"
 
-        # Build the prompt 
+        # This is our main prompt - it's long but very specific about what we want
         prompt = f"""You are an expert travel query classifier. Analyze this travel query and provide a structured response.
 
         {conversation_context}QUERY: "{query}"
@@ -212,10 +207,9 @@ class QueryClassifier:
         try:
             response = self.gemini_client.generate_response(prompt)
             
-            # Clean and parse JSON
+            # Clean up the response - sometimes it comes wrapped in markdown
             response_clean = response.strip()
             
-            # Find JSON block if wrapped in markdown
             if "```json" in response_clean:
                 json_start = response_clean.find("```json") + 7
                 json_end = response_clean.find("```", json_start)
@@ -227,30 +221,30 @@ class QueryClassifier:
             
             result = json.loads(response_clean)
 
-            # Store raw response for debugging/testing
+            # Keep the raw response for debugging
             self.last_raw_gemini_response = result
             
-            # Validate required fields
+            # Make sure we got all the fields we need
             required_fields = ["type", "reasoning for type", "external_data_needed", "external_data_type", 
                              "key_Global_information", "key_specific_destination_recommendations_information", 
                              "key_specific_packing_suggestions_information", "key_specific_local_attractions_information"]
             if not all(key in result for key in required_fields):
                 raise ValueError(f"Missing required fields in LLM response. Got: {list(result.keys())}")
             
-            # Ensure type is one of the three allowed
+            # Validate the type is one we recognize
             valid_types = ["destination_recommendations", "packing_suggestions", "local_attractions"]
             if result["type"] not in valid_types:
                 logger.warning(f"LLM returned invalid type: {result['type']}, defaulting to destination_recommendations")
                 result["type"] = "destination_recommendations"
             
-            # Validate external_data_type
+            # Validate external data type
             valid_external_types = ["weather", "attractions", "both", "none"]
             if result.get("external_data_type") not in valid_external_types:
                 logger.warning(f"LLM returned invalid external_data_type: {result.get('external_data_type')}, defaulting to 'none'")
                 result["external_data_type"] = "none"
                 result["external_data_needed"] = False
             
-            # Ensure arrays are actually arrays
+            # Make sure all the arrays are actually arrays
             array_fields = ["key_Global_information", "key_specific_destination_recommendations_information", 
                           "key_specific_packing_suggestions_information", "key_specific_local_attractions_information"]
             for field in array_fields:
@@ -272,37 +266,31 @@ class QueryClassifier:
     
     def classify_with_patterns(self, query: str) -> Dict[str, Any]:
         """
-        Use pattern matching as backup classification method.
-        Updated to handle array-based structure (but can't extract key info like LLM can).
+        Basic pattern matching as a backup when Gemini isn't working.
         
-        Args:
-            query: User's travel query
-            
-        Returns:
-            Dict with type, external_data_needed, and confidence scores
         """
         query_lower = query.lower()
         
-        # Calculate scores for each type (unchanged logic)
+        # Score each query type based on keyword matches
         type_scores = {}
         
         for query_type, patterns in self.type_patterns.items():
             score = 0
             matches = []
             
-            # Check keywords
+            # Check for individual keywords
             for keyword in patterns["keywords"]:
                 if keyword in query_lower:
                     score += 1
                     matches.append(keyword)
             
-            # Check phrases (higher weight)
+            # Phrases get double points because they're more specific
             for phrase in patterns["phrases"]:
                 if phrase in query_lower:
                     score += 2
                     matches.append(phrase)
             
-            # Normalize score
+            # Normalize the score
             total_patterns = len(patterns["keywords"]) + len(patterns["phrases"])
             normalized_score = score / total_patterns if total_patterns > 0 else 0
             
@@ -311,24 +299,22 @@ class QueryClassifier:
                 "matches": matches
             }
         
-        # Determine best match
+        # Pick the highest scoring type
         best_type = max(type_scores.keys(), key=lambda k: type_scores[k]["score"])
         best_score = type_scores[best_type]["score"]
         
-        # If no good matches, default to destination_recommendations
+        # If nothing matched well, default to destinations
         if best_score == 0:
             best_type = "destination_recommendations"
-            best_score = 0.1  # Low confidence default
+            best_score = 0.1
         
-        # Check if external data is needed
+        # Figure out if we need external data
         external_data_needed = False
         external_data_reason = "Pattern matching suggests no external data needed"
         
-        # Weather API indicators
         weather_matches = sum(1 for pattern in self.external_data_patterns["weather_needed"] 
                             if pattern in query_lower)
         
-        # Location-specific data indicators  
         location_matches = sum(1 for pattern in self.external_data_patterns["location_specific"]
                              if pattern in query_lower)
         
@@ -346,7 +332,7 @@ class QueryClassifier:
             "confidence": best_score,
             "all_scores": type_scores,
             "reasoning": f"Pattern matching: {type_scores[best_type]['matches']}",
-            # Pattern matching can't extract key information - only LLM can
+            # Pattern matching can't extract detailed info like the LLM can
             "key_Global_information": [],
             "key_specific_destination_recommendations_information": [],
             "key_specific_packing_suggestions_information": [],
@@ -359,23 +345,14 @@ class QueryClassifier:
     def combine_classifications(self, gemini_result: Dict[str, Any], 
                               pattern_result: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Combine Gemini LLM and pattern matching results using confidence scoring.
-        Updated to handle array-based key information structure for all types.
+        Take the results from both Gemini and pattern matching and pick the best one.
         
-        Args:
-            gemini_result: Result from Gemini classification
-            pattern_result: Result from pattern matching
-            
-        Returns:
-            Final classification with confidence scoring
         """
         
-        # Confidence weights
-        GEMINI_WEIGHT = 0.8  # LLM is primary
-        PATTERN_WEIGHT = 0.2  # Pattern matching is backup
-        
-        # Agreement bonus
-        AGREEMENT_BONUS = 0.3
+        # How much we trust each method
+        GEMINI_WEIGHT = 0.8
+        PATTERN_WEIGHT = 0.2
+        AGREEMENT_BONUS = 0.3  # Extra confidence when they agree
         
         final_result = {
             "type": None,
@@ -392,7 +369,7 @@ class QueryClassifier:
         }
         
         try:
-            # Check if both methods agree on type
+            # Do both methods agree on the query type?
             types_agree = gemini_result["type"] == pattern_result["type"]
             
             # Calculate confidence scores
@@ -400,27 +377,27 @@ class QueryClassifier:
             pattern_confidence = PATTERN_WEIGHT * pattern_result["confidence"]
             
             if types_agree:
-                # Both methods agree - high confidence
+                # Both methods agree - we're confident
                 final_result["type"] = gemini_result["type"]
                 final_result["confidence_score"] = gemini_confidence + pattern_confidence + AGREEMENT_BONUS
                 final_result["primary_source"] = "consensus"
                 final_result["reasoning"] = f"Both LLM and patterns agree on {gemini_result['type']}"
                 
             elif gemini_confidence > pattern_confidence:
-                # Trust LLM more
+                # Trust the LLM
                 final_result["type"] = gemini_result["type"]
                 final_result["confidence_score"] = gemini_confidence
                 final_result["primary_source"] = "llm"
                 final_result["reasoning"] = f"LLM classification preferred: {gemini_result['type']}"
                 
             else:
-                # Pattern matching has higher confidence
+                # Pattern matching won out
                 final_result["type"] = pattern_result["type"]
                 final_result["confidence_score"] = pattern_confidence
                 final_result["primary_source"] = "patterns"
                 final_result["reasoning"] = f"Pattern matching preferred: {pattern_result['type']}"
             
-            # External data decision - use LLM if available, otherwise patterns
+            # For external data, trust Gemini if we have it
             if "external_data_needed" in gemini_result:
                 final_result["external_data_needed"] = gemini_result["external_data_needed"]
                 final_result["external_data_reason"] = gemini_result.get("external_data_reason", "LLM recommendation")
@@ -430,7 +407,7 @@ class QueryClassifier:
                 final_result["external_data_reason"] = pattern_result["external_data_reason"]
                 final_result["external_data_type"] = "none"
             
-            # Key information - only LLM can extract this (arrays for all types)
+            # Only Gemini can extract the detailed user preferences
             final_result["key_Global_information"] = gemini_result.get("key_Global_information", [])
             final_result["key_specific_destination_recommendations_information"] = gemini_result.get("key_specific_destination_recommendations_information", [])
             final_result["key_specific_packing_suggestions_information"] = gemini_result.get("key_specific_packing_suggestions_information", [])
@@ -446,7 +423,7 @@ class QueryClassifier:
             logger.error(f"Error combining classifications: {str(e)}")
             # Emergency fallback
             final_result = {
-                "type": "destination_recommendations",  # Safe default
+                "type": "destination_recommendations",
                 "external_data_needed": False,
                 "key_Global_information": [],
                 "key_specific_destination_recommendations_information": [],
@@ -463,48 +440,48 @@ class QueryClassifier:
     
     def classify_query(self, query: str, conversation_history: List[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
-        Main classification method that orchestrates the entire process.
-        Updated to handle array-based key information extraction for all types.
+        Classify a user's travel query.
         
-        Args:
-            query: User's travel query
-            
-        Returns:
-            Complete classification result with type, external data needs, and array-based key info for all types
+        This orchestrates the whole process:
+        1. Try to use Gemini for smart classification and info extraction
+        2. Use pattern matching as backup and validation
+        3. Combine the results intelligently
+        4. Return everything the conversation manager needs
+        
         """
         logger.info(f"Classifying query: {query[:50]}...")
         
-        # Step 1: Try Gemini classification
+        # Try the smart approach first
         gemini_result = None
         try:
             gemini_result = self.classify_with_gemini(query, conversation_history)
         except Exception as e:
             logger.error(f"Gemini classification failed: {str(e)}")
         
-        # Step 2: Always do pattern matching (backup + validation)
+        # Always do pattern matching for backup/validation
         pattern_result = self.classify_with_patterns(query)
         
-        # Step 3: Combine results or use fallback
+        # Combine the results or fall back
         if gemini_result:
             final_result = self.combine_classifications(gemini_result, pattern_result)
         else:
-            # LLM failed - use pattern matching only
+            # Gemini failed - use pattern matching only
             logger.warning("Using pattern matching fallback due to LLM failure")
             final_result = {
                 "type": pattern_result["type"],
                 "external_data_needed": pattern_result["external_data_needed"],
                 "external_data_type": "none",
-                "key_Global_information": [],  # No key info without LLM
-                "key_specific_destination_recommendations_information": [],  # No key info without LLM
-                "key_specific_packing_suggestions_information": [],  # No key info without LLM
-                "key_specific_local_attractions_information": [],  # No key info without LLM
+                "key_Global_information": [],
+                "key_specific_destination_recommendations_information": [],
+                "key_specific_packing_suggestions_information": [],
+                "key_specific_local_attractions_information": [],
                 "confidence_score": pattern_result["confidence"],
                 "primary_source": "patterns_fallback",
                 "reasoning": "LLM failed - using pattern matching only",
                 "fallback_used": True
             }
         
-        # Add metadata
+        # Add some metadata
         final_result["timestamp"] = datetime.utcnow().isoformat()
         final_result["query"] = query
         

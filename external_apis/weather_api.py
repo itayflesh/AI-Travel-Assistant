@@ -16,14 +16,8 @@ API_KEY = os.getenv("WEATHER_API_KEY")
 
 def get_tourism_center_coordinates(destination, gemini_client):
     """
-    Ask Gemini to extract lat/lon of the main tourism center for destination.
+    Ask Gemini to figure out where the main tourist area is and get its coordinates.
     
-    Args:
-        destination: City or place name
-        gemini_client: Initialized GeminiClient instance
-        
-    Returns:
-        Dict with latitude, longitude, and tourism_center_name or error
     """
     try:
         prompt = f"""Extract the latitude and longitude of the main tourism center for: "{destination}"
@@ -46,10 +40,9 @@ If you cannot determine coordinates, return: {{"error": "Cannot determine coordi
 
         response = gemini_client.generate_response(prompt, max_tokens=200)
         
-        # Clean and parse JSON
+        # Clean up the response - sometimes it comes wrapped in markdown
         response_clean = response.strip()
         
-        # Find JSON block if wrapped in markdown
         if "```json" in response_clean:
             json_start = response_clean.find("```json") + 7
             json_end = response_clean.find("```", json_start)
@@ -61,12 +54,12 @@ If you cannot determine coordinates, return: {{"error": "Cannot determine coordi
         
         coords = json.loads(response_clean)
         
-        # Validate response format
+        # Make sure we got what we expected
         if "latitude" in coords and "longitude" in coords:
-            logger.info(f"Gemini geocoding successful for {destination}: {coords.get('tourism_center_name', 'Unknown area')}")
+            logger.info(f"Gemini found tourism center for {destination}: {coords.get('tourism_center_name', 'Unknown area')}")
             return coords
         else:
-            logger.warning(f"Gemini geocoding returned invalid format for {destination}")
+            logger.warning(f"Gemini response for {destination} was missing coordinates")
             return {"error": "Invalid response format"}
             
     except Exception as e:
@@ -74,6 +67,7 @@ If you cannot determine coordinates, return: {{"error": "Cannot determine coordi
         return {"error": f"Gemini geocoding error: {str(e)}"}
 
 def get_current_weather(city, api_key):
+    """Basic weather lookup by city name - the standard approach"""
     url = "http://api.openweathermap.org/data/2.5/weather"
     params = {"q": city, "appid": api_key, "units": "metric"}
     res = requests.get(url, params=params)
@@ -90,7 +84,7 @@ def get_current_weather(city, api_key):
     }
 
 def get_current_weather_by_coordinates(lat, lon, api_key):
-    """Get current weather using latitude and longitude coordinates"""
+    """Get current weather using exact coordinates - more precise than city names"""
     url = "http://api.openweathermap.org/data/2.5/weather"
     params = {"lat": lat, "lon": lon, "appid": api_key, "units": "metric"}
     res = requests.get(url, params=params)
@@ -107,6 +101,10 @@ def get_current_weather_by_coordinates(lat, lon, api_key):
     }
 
 def get_filtered_forecast(city, api_key):
+    """
+    Get 5-day forecast but only for specific times of day.
+
+    """
     url = "http://api.openweathermap.org/data/2.5/forecast"
     params = {"q": city, "appid": api_key, "units": "metric"}
     res = requests.get(url, params=params)
@@ -118,7 +116,7 @@ def get_filtered_forecast(city, api_key):
     for entry in data['list']:
         dt = datetime.fromtimestamp(entry['dt'])
         hour = dt.hour
-        if hour in [9, 15, 21]:
+        if hour in [9, 15, 21]:  # 9am, 3pm, 9pm
             date_str = dt.date()
             if date_str not in forecast_by_day:
                 forecast_by_day[date_str] = []
@@ -128,6 +126,7 @@ def get_filtered_forecast(city, api_key):
                 "description": entry['weather'][0]['description'].capitalize()
             })
 
+    # Flatten it back into a list, keeping only the first 5 days
     forecast_list = []
     for date in sorted(forecast_by_day.keys())[:5]:
         forecast_list.extend(forecast_by_day[date])
@@ -135,7 +134,7 @@ def get_filtered_forecast(city, api_key):
     return forecast_list
 
 def get_filtered_forecast_by_coordinates(lat, lon, api_key):
-    """Get forecast using latitude and longitude coordinates"""
+    """Same as above but using coordinates instead of city name"""
     url = "http://api.openweathermap.org/data/2.5/forecast"
     params = {"lat": lat, "lon": lon, "appid": api_key, "units": "metric"}
     res = requests.get(url, params=params)
@@ -164,6 +163,7 @@ def get_filtered_forecast_by_coordinates(lat, lon, api_key):
     return forecast_list
 
 def build_weather_json(city, api_key):
+    """Combine current weather and forecast into one neat package"""
     current = get_current_weather(city, api_key)
     if "error" in current:
         return current
@@ -176,7 +176,7 @@ def build_weather_json(city, api_key):
     return current
 
 def build_weather_json_by_coordinates(lat, lon, api_key):
-    """Build weather JSON using coordinates instead of city name"""
+    """Same as above but using coordinates - more precise for tourism areas"""
     current = get_current_weather_by_coordinates(lat, lon, api_key)
     if "error" in current:
         return current
@@ -189,6 +189,7 @@ def build_weather_json_by_coordinates(lat, lon, api_key):
     return current
 
 def generate_weather_summary(weather_data):
+    """Turn the weather JSON into a human-readable summary"""
     if "error" in weather_data:
         return f"Weather data could not be retrieved: {weather_data['error']}"
 
@@ -208,21 +209,16 @@ def generate_weather_summary(weather_data):
 
     return "\n".join(lines)
 
-# --- ENHANCED: MAIN INTEGRATION FUNCTION WITH GEMINI GEOCODING ---
 def get_weather_for_destination(destination, gemini_client=None):
     """
-    ENHANCED: Main function for integration with the travel assistant.
-    Now supports Gemini geocoding for more precise tourism center weather.
+    The function everyone calls to get weather for a destination.
     
-    Args:
-        destination: City or place name (e.g., "Paris", "Tokyo", "New York")
-        gemini_client: Optional GeminiClient instance for tourism center geocoding
-        
-    Returns:
-        Dict with weather data or error information
+    Try to use Gemini to find the actual tourism center first, 
+    then falls back to regular city-name lookup if needed.
+    
     """
     try:
-        # Validate inputs
+        # Basic validation
         if not destination or not destination.strip():
             return {
                 "error": "Destination is required",
@@ -238,17 +234,17 @@ def get_weather_for_destination(destination, gemini_client=None):
             }
         
         destination = destination.strip()
-        logger.info(f"Fetching weather for: {destination}")
+        logger.info(f"Looking up weather for: {destination}")
         
-        # NEW: Try Gemini geocoding first if available
+        # Try the smart approach first if we have Gemini available
         if gemini_client:
-            logger.info(f"Attempting Gemini geocoding for tourism center of {destination}")
+            logger.info(f"Trying Gemini tourism center lookup for {destination}")
             coords = get_tourism_center_coordinates(destination, gemini_client)
             
             if "latitude" in coords and "longitude" in coords:
-                logger.info(f"Using Gemini coordinates for {destination}: {coords.get('tourism_center_name', 'Unknown area')}")
+                logger.info(f"Got tourism center coordinates for {destination}: {coords.get('tourism_center_name', 'Unknown area')}")
                 
-                # Use coordinates for more precise weather
+                # Use the precise coordinates for weather
                 weather_data = build_weather_json_by_coordinates(
                     coords["latitude"], 
                     coords["longitude"], 
@@ -272,15 +268,15 @@ def get_weather_for_destination(destination, gemini_client=None):
                         "success": True
                     }
                     
-                    logger.info(f"Successfully fetched weather via Gemini coordinates for {destination}: {weather_data['current_weather']['temperature']}°C")
+                    logger.info(f"Got weather via Gemini coordinates for {destination}: {weather_data['current_weather']['temperature']}°C")
                     return result
                 else:
-                    logger.warning(f"Weather API failed with Gemini coordinates for {destination}, falling back to city name")
+                    logger.warning(f"Weather API failed with Gemini coordinates for {destination}, trying fallback")
             else:
-                logger.info(f"Gemini geocoding failed for {destination}: {coords.get('error', 'Unknown error')}, falling back to city name")
+                logger.info(f"Gemini couldn't find tourism center for {destination}: {coords.get('error', 'Unknown error')}, trying fallback")
         
-        # EXISTING: Fallback to current method (city name lookup)
-        logger.info(f"Using city name lookup for {destination}")
+        # Fallback to regular city name lookup
+        logger.info(f"Using standard city name lookup for {destination}")
         weather_data = build_weather_json(destination, API_KEY)
         
         # Check if there was an error
@@ -302,7 +298,7 @@ def get_weather_for_destination(destination, gemini_client=None):
             "success": True
         }
         
-        logger.info(f"Successfully fetched weather via city lookup for {destination}: {weather_data['current_weather']['temperature']}°C")
+        logger.info(f"Got weather via city lookup for {destination}: {weather_data['current_weather']['temperature']}°C")
         return result
         
     except requests.exceptions.HTTPError as e:
@@ -323,7 +319,7 @@ def get_weather_for_destination(destination, gemini_client=None):
             "success": False
         }
 
-# --- KEEP ORIGINAL MAIN FOR TESTING ---
+# Simple test script you can run directly
 if __name__ == "__main__":
     city = input("Enter city name: ")
     weather_data = build_weather_json(city, API_KEY)

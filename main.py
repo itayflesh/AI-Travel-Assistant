@@ -13,7 +13,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from llm.gemini_client import GeminiClient
 from core.query_classifier import QueryClassifier
 from core.redis_storage import GlobalContextStorage  
-from core.conversation_manager import ConversationManager  # Updated with handlers
+from core.conversation_manager import ConversationManager
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -26,37 +26,42 @@ st.set_page_config(
     layout="wide"
 )
 
-# Initialize components with proper error handling
 @st.cache_resource
 def init_components():
-    """Initialize Global Context Storage, Gemini client, and query classifier"""
+    """
+    Set up all the pieces we need for the travel assistant.
+    
+    This gets called once when the app starts and sets up our Redis storage,
+    Gemini client, query classifier, and conversation manager. If anything
+    fails to connect, we show helpful error messages to the user.
+    """
     try:
-        # Initialize Global Context Storage
+        # Set up our context storage (uses Redis under the hood)
         storage = GlobalContextStorage()
         
-        # Test Redis connection
+        # Make sure Redis is actually working
         try:
             storage.redis_client.ping()
-            st.success("✅ Array-Based Context Storage connection successful")
+            st.success("✅ Context storage connected successfully")
         except Exception as e:
             st.error(f"❌ Redis connection failed: {str(e)}")
             st.error("Make sure Redis is running and REDIS_URL is configured correctly")
             return None, None, None, None
         
-        # Initialize Gemini client
+        # Set up our AI client
         gemini = GeminiClient()
         
-        # Test Gemini connection
+        # Test that we can actually talk to Gemini
         if not gemini.test_connection():
             st.error("❌ Failed to connect to Gemini API. Check your GOOGLE_AI_API_KEY.")
             return None, None, None, None
         else:
             st.success("✅ Gemini API connection successful")
         
-        # Initialize query classifier
+        # Set up the smart query classifier
         classifier = QueryClassifier(gemini)
         
-        # Initialize conversation manager with specialized handlers
+        # Wire everything together with the conversation manager
         conversation_manager = ConversationManager(storage, gemini, classifier)
         
         return storage, gemini, classifier, conversation_manager
@@ -66,16 +71,22 @@ def init_components():
         return None, None, None, None
 
 def display_array_context_analysis(classification_result, storage):
-    """Display enhanced context analysis for array-based storage"""
+    """
+    Show the user what our smart analysis figured out from their question.
+    
+    This is like showing your work - we break down what type of question it was,
+    what information we extracted, and how confident we are. Super useful for
+    debugging and helping users understand why they got certain recommendations.
+    """
     if not classification_result:
         return
         
-    with st.expander("🧠 Advanced Prompt Engineering Analysis", expanded=False):
+    with st.expander("🧠 Smart Query Analysis", expanded=False):
         col1, col2 = st.columns(2)
         with col1:
             st.metric("Query Type", classification_result["type"])
             st.metric("Confidence", f"{classification_result.get('confidence_score', 0):.2f}")
-            # Show which handler was used
+            # Show which specialized handler handled this
             handler_used = classification_result["type"].replace('_', ' ').title()
             st.metric("Handler Used", f"{handler_used} Handler")
         
@@ -83,7 +94,7 @@ def display_array_context_analysis(classification_result, storage):
             st.metric("External Data", "Yes" if classification_result.get("external_data_needed") else "No")
             st.metric("Source", classification_result.get("primary_source", "unknown"))
         
-        # Show information extracted in this query
+        # Show what useful info we pulled from this specific question
         global_info = classification_result.get("key_Global_information", [])
         type_specific_info = classification_result.get("key_specific_type_information", [])
         
@@ -97,25 +108,25 @@ def display_array_context_analysis(classification_result, storage):
             for info in type_specific_info:
                 st.text(f"• {info}")
         
-        # Show complete context used for response
+        # Show the complete picture we built up over the whole conversation
         try:
             context = storage.get_complete_context_for_query_type(classification_result["type"])
             
-            # All global context (accumulated)
+            # Everything we know about the user from all their questions
             all_global = context["global"]
             if all_global:
                 st.markdown("**🌍 Complete Global Context Used:**")
                 for info in all_global:
                     st.text(f"• {info}")
             
-            # All type-specific context (accumulated)
+            # Type-specific stuff we've learned
             all_type_specific = context["type_specific"]
             if all_type_specific:
                 st.markdown("**🎯 Complete Type-Specific Context Used:**")
                 for info in all_type_specific:
                     st.text(f"• {info}")
             
-            # External data used
+            # External APIs we hit for current data
             if context["external_data"]:
                 st.markdown("**🌐 External Data Used:**")
                 for data_type, data in context["external_data"].items():
@@ -124,13 +135,13 @@ def display_array_context_analysis(classification_result, storage):
         except Exception as e:
             st.text(f"Error showing complete context: {str(e)}")
         
-        # Classification reasoning
+        # Why we classified it this way
         st.markdown("**🤖 Classification Reasoning:**")
         st.text(classification_result.get("reasoning", "No reasoning provided"))
         
-        # Show handler-specific features
+        # Show off the cool features each handler brings
         handler_type = classification_result["type"]
-        st.markdown("**🚀 Advanced Prompt Engineering Features:**")
+        st.markdown("**🚀 Smart Features Active:**")
         
         if handler_type == "destination_recommendations":
             st.text("✓ Multi-criteria decision making")
@@ -146,39 +157,42 @@ def display_array_context_analysis(classification_result, storage):
             st.text("✓ Priority ranking system")
         
         if classification_result.get("fallback_used"):
-            st.warning("⚠️ Fallback classification used due to LLM error")
+            st.warning("⚠️ Fallback classification used due to AI service error")
 
 def main():
-    """Main Streamlit application with Specialized Handler Architecture"""
+    """
+    The main Streamlit app.
     
-    # Title and description
-    st.title("🚀 Advanced Prompt Engineering Travel Assistant")
-    st.markdown("*Navan Junior AI Engineer Assignment - Specialized Handler Architecture*")
-    st.markdown("**✨ Features: Chain-of-Thought Reasoning • Smart Context Management • Weather-Aware Prompts • Interest-Based Filtering**")
+    """
+    
+    # App header and description
+    st.title("🚀 Smart Travel Assistant")
+    st.markdown("*Navan Junior AI Engineer Assignment - Intelligent Conversation System*")
+    st.markdown("**✨ Features: Smart Context Management • Weather Integration • Specialized Handlers • Chain-of-Thought Reasoning**")
     st.markdown("---")
     
-    # Initialize components
+    # Get all our components set up
     storage, gemini, classifier, conversation_manager = init_components()
     
     if not conversation_manager:
         st.error("Failed to initialize components. Please check your configuration.")
         st.stop()
     
-    # Create layout: Sidebar + Two main columns
+    # Sidebar with context stats and controls
     with st.sidebar:
-        st.markdown("### 🌍 Array-Based Context Stats")
+        st.markdown("### 🌍 Context Statistics")
         
         try:
             stats = storage.get_storage_stats()
             
-            # Global context stats
+            # Show global context info
             global_stats = stats.get("global_context", {})
             global_items = global_stats.get("total_items", 0)
             global_data = global_stats.get("current_data", [])
             
             st.metric("Global Context Items", global_items)
             
-            # Show current global data
+            # Preview current global context
             if global_data:
                 st.markdown("**Current Global Context:**")
                 for item in global_data[:5]:  # Show first 5 items
@@ -190,7 +204,7 @@ def main():
             
             st.markdown("### 🎯 Type-Specific Context")
             
-            # Type-specific stats
+            # Show context for each query type we've seen
             type_stats = stats.get("type_specific", {})
             for query_type, info in type_stats.items():
                 total_items = info.get("total_items", 0)
@@ -198,14 +212,14 @@ def main():
                 
                 st.metric(f"{type_name}", f"{total_items} items")
                 
-                # Show some type-specific data
+                # Let users peek at the type-specific data
                 type_data = info.get("current_data", [])
                 if type_data:
                     with st.expander(f"View {type_name} Context", expanded=False):
                         for item in type_data:
                             st.text(f"• {item}")
             
-            # Conversation stats
+            # Conversation overview
             st.markdown("### 💬 Conversation Stats")
             history = storage.get_conversation_history()
             user_queries = sum(1 for msg in history if "user_query" in msg)
@@ -229,7 +243,7 @@ def main():
         except Exception as e:
             st.error(f"Error loading stats: {str(e)}")
         
-        # Clear conversation button
+        # Reset button for testing
         if st.button("🗑️ Clear All Data"):
             try:
                 storage.clear_all_data()
@@ -238,7 +252,7 @@ def main():
             except Exception as e:
                 st.error(f"❌ Error clearing data: {str(e)}")
         
-        # Show specialized handlers info
+        # Show what handlers are available
         st.markdown("### 🚀 Specialized Handlers")
         st.text("🎯 Destination Handler")
         st.text("🎒 Packing Handler") 
@@ -247,40 +261,40 @@ def main():
         st.text("✅ Context-aware prompts")
         st.text("✅ Smart data integration")
 
-        # Raw Gemini Response (debugging)
+        # Debug info for developers
         if hasattr(st.session_state, 'last_raw_gemini') and st.session_state.last_raw_gemini:
             st.markdown("### 🤖 Raw Gemini Response")
             with st.expander("View Raw Classification", expanded=False):
                 st.json(st.session_state.last_raw_gemini)
     
-    # Main content area - Split into two columns
+    # Main content area - split view
     chat_col, prompt_col = st.columns([1, 1])  # Equal width columns
     
-    # LEFT COLUMN: Chat Interface
+    # LEFT SIDE: Chat interface
     with chat_col:
         st.markdown("### 💬 Chat Interface")
         
-        # Get and display conversation history
+        # Load and display conversation history
         try:
             conversation_history = storage.get_conversation_history()
             formatted_messages = conversation_manager.format_conversation_for_display(conversation_history)
             
-            # Create chat container
+            # Chat container for messages
             chat_container = st.container()
             
             with chat_container:
-                # Display all previous messages
+                # Show all previous messages
                 for message in formatted_messages:
                     if message["type"] == "user":
                         with st.chat_message("user"):
                             st.write(message["content"])
                             
-                            # Show classification data if available
+                            # Show the smart analysis if we have it
                             if message.get("classification"):
                                 classification = message["classification"]
                                 
                                 with st.expander("🔍 Smart Query Analysis", expanded=False):
-                                    # Main metrics
+                                    # Key metrics from our analysis
                                     col1, col2 = st.columns(2)
                                     with col1:
                                         st.metric("Query Type", classification.get("type", "unknown"))
@@ -290,7 +304,7 @@ def main():
                                         st.metric("External Data", "Yes" if classification.get("external_data_needed") else "No")
                                         st.metric("Source", classification.get("primary_source", "unknown"))
                                     
-                                    # Show array-based information extracted
+                                    # What we learned from this question
                                     global_info = classification.get("key_Global_information", [])
                                     type_info = classification.get("key_specific_type_information", [])
                                     
@@ -304,7 +318,7 @@ def main():
                                         for info in type_info:
                                             st.text(f"• {info}")
                                     
-                                    # Reasoning
+                                    # Why we classified it this way
                                     st.markdown("**Classification Reasoning:**")
                                     st.text(classification.get("reasoning", "No reasoning provided"))
                             
@@ -317,26 +331,26 @@ def main():
             formatted_messages = []
             conversation_history = []
     
-    # RIGHT COLUMN: Final Prompt Display
+    # RIGHT SIDE: Show the engineered prompts
     with prompt_col:
-        st.markdown("### 🤖 Advanced Engineered Prompt")
+        st.markdown("### 🤖 Engineered Prompt")
         
-        # Show the last prompt if available
+        # Display the last prompt we built if we have one
         if hasattr(st.session_state, 'last_final_prompt') and st.session_state.last_final_prompt:
             st.code(st.session_state.last_final_prompt, language="text")
         else:
-            st.info("The specialized prompt engineered by the handlers will appear here after you ask a question.")
+            st.info("The smart prompt engineered by our specialized handlers will appear here after you ask a question.")
     
-    # Chat input (spans both columns)
+    # Chat input at the bottom
     user_input = st.chat_input("Ask me anything about travel planning...")
     
     if user_input:
-        # Display user message immediately in chat column
+        # Show user message immediately
         with chat_col:
             with st.chat_message("user"):
                 st.write(user_input)
         
-        # Process and respond using the conversation manager with specialized handlers
+        # Process the message with our smart system
         with chat_col:
             with st.chat_message("assistant"):
                 
@@ -348,33 +362,33 @@ def main():
                     final_prompt = result['final_prompt']
                     handler_used = result.get('handler_used', 'unknown')
                 
-                # Store for debugging display
+                # Save debug info for the sidebar
                 if hasattr(classifier, 'last_raw_gemini_response') and classifier.last_raw_gemini_response:
                     st.session_state.last_raw_gemini = classifier.last_raw_gemini_response
                 
-                # Store the final prompt for display
+                # Save the engineered prompt for display
                 if final_prompt:
                     st.session_state.last_final_prompt = final_prompt
                 
-                # Display the response
+                # Show the AI's response
                 st.write(response)
                 
-                # Show which handler was used
+                # Let users know which handler helped them
                 if handler_used != 'fallback':
                     handler_name = handler_used.replace('_', ' ').title()
-                    st.success(f"✨ Powered by {handler_name} Handler with advanced prompt engineering")
+                    st.success(f"✨ Powered by {handler_name} Handler with smart prompt engineering")
                 
-                # Show enhanced array-based context analysis
+                # Show the detailed analysis
                 display_array_context_analysis(classification_result, storage)
         
-        # Rerun to update the display
+        # Refresh the page to update everything
         st.rerun()
     
-    # Footer with enhanced status
+    # Footer
     st.markdown("---")
     st.markdown(
         "<div style='text-align: center; color: gray;'>"
-        "🚀 Advanced Prompt Engineering Travel Assistant | Navan Junior AI Engineer Assignment<br>"
+        "🚀 Smart Travel Assistant | Navan Junior AI Engineer Assignment<br>"
         "✅ Specialized Handlers | ✅ Chain-of-Thought Reasoning | ✅ Weather-Aware Prompts | ✅ Smart Context Management"
         "</div>", 
         unsafe_allow_html=True

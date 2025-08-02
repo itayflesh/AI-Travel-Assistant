@@ -10,32 +10,13 @@ logger = logging.getLogger(__name__)
 
 class AttractionsHandler:
     """
-    Advanced prompt engineering for local attractions and activities recommendations.
+    prompt engineering for local attractions and activities recommendations.
     
-    Demonstrates production-ready AI engineering skills for Navan assignment:
     
-    CONVERSATION QUALITY FEATURES:
-    - Information completeness analysis for natural conversation flow
-    - Adaptive response strategies based on available context
-    - Smart external data relevance assessment
-    - Context-aware questioning that builds on previous exchanges
-    
-    PROMPT DESIGN FEATURES:
-    - Multi-step chain-of-thought reasoning tailored to available information
-    - Strategic instruction variations based on context completeness
-    - Smart data filtering to include only relevant information
-    - Length control and response strategy optimization
-    - External data usage instructions for intelligent routing
-    
-    ADVANCED AI ENGINEERING:
-    - Information completeness scoring with critical gap identification
-    - External data relevance assessment (temporal and contextual)
-    - Adaptive prompt construction based on conversation state
-    - Error handling with intelligent fallbacks
     """
     
     def __init__(self):
-        # Information completeness thresholds for adaptive responses
+        # These thresholds help us decide how to respond based on info quality
         self.completeness_thresholds = {
             "minimal": 0.2,      # Almost no useful info - focus on questions
             "partial": 0.5,      # Some info but gaps - hybrid approach  
@@ -43,7 +24,7 @@ class AttractionsHandler:
             "complete": 1.0      # Comprehensive info - detailed planning
         }
         
-        # Critical information categories for attractions recommendations
+        # The key things we need to know to give good attraction recommendations
         self.critical_info_categories = {
             "location": ["destination", "region", "continent"],
             "time_constraints": ["time_available", "duration", "travel_dates"],
@@ -51,46 +32,45 @@ class AttractionsHandler:
             "accessibility": ["mobility", "accessibility_needs", "group_size"]
         }
         
-        logger.info("Enhanced AttractionsHandler initialized with intelligent analysis capabilities")
+        logger.info("AttractionsHandler ready to build smart prompts")
     
     def build_final_prompt(self, user_query: str, global_context: List[str], 
                           type_specific_context: List[str], external_data: Dict[str, Any],
                           recent_conversation: List[Dict[str, Any]]) -> str:
         """
-        Build an intelligently engineered prompt for attractions recommendations.
-        
-        This demonstrates advanced prompt engineering through:
-        
-        1. CONVERSATION QUALITY: Analyzes conversation flow and information gaps
-        2. PROMPT DESIGN: Creates targeted, effective prompts based on available data
-        3. SMART DATA ROUTING: Only uses external data when actually relevant
-        4. ADAPTIVE STRATEGY: Changes approach based on information completeness
+        Build a smart prompt based on what we know and what we need.
+
+        The steps mirror how a human travel expert would think:
+        1. What do I know vs what do I need to know?
+        2. Do I have current data that would be helpful?
+        3. What's the best way to respond given the situation?
+        4. How do I craft a response that feels natural and helpful?
         """
         try:
-            # Step 1: Analyze information completeness and quality
+            # Figure out how much useful info we actually have
             info_analysis = self._analyze_information_completeness(
                 user_query, global_context, type_specific_context
             )
             
-            # Step 2: Assess external data relevance (smart routing)
+            # Decide if our external data is actually useful here
             external_relevance = self._assess_external_data_relevance(
                 external_data, global_context, user_query, info_analysis
             )
             
-            # Step 3: Determine optimal response strategy (conversation quality)
+            # Pick the best response strategy based on what we know
             response_strategy = self._determine_response_strategy(
                 info_analysis, external_relevance, recent_conversation
             )
             
-            # Step 4: Build contextual conversation awareness
+            # Build conversation context so we don't repeat ourselves
             conversation_context = self._build_conversation_context(recent_conversation)
             
-            # Step 5: Create filtered and prioritized context (prompt efficiency)
+            # Filter context to only include the most relevant stuff
             filtered_context = self._filter_and_prioritize_context(
                 global_context, type_specific_context, info_analysis
             )
             
-            # Step 6: Build the strategically engineered prompt
+            # Put it all together into a strategic prompt
             final_prompt = self._build_strategic_prompt(
                 user_query=user_query,
                 info_analysis=info_analysis,
@@ -102,25 +82,23 @@ class AttractionsHandler:
             )
             
             logger.info(
-                f"Built strategic attractions prompt: {len(final_prompt)} chars, "
+                f"Built attractions prompt: {len(final_prompt)} chars, "
                 f"strategy={response_strategy['type']}, "
                 f"completeness={info_analysis['completeness_score']:.2f}, "
-                f"attractions_used={external_relevance['use_attractions']}"
+                f"using_attractions_data={external_relevance['use_attractions']}"
             )
             
             return final_prompt
             
         except Exception as e:
-            logger.error(f"Error building strategic attractions prompt: {str(e)}")
+            logger.error(f"Error building attractions prompt: {str(e)}")
             return self._build_fallback_prompt(user_query, global_context, type_specific_context)
     
     def _analyze_information_completeness(self, user_query: str, global_context: List[str], 
                                         type_specific_context: List[str]) -> Dict[str, Any]:
         """
-        CONVERSATION QUALITY: Analyze information completeness for natural conversation flow.
+        Figure out how much we actually know vs how much we need to know.
         
-        This enables intelligent questioning strategies by identifying what information
-        we have vs what we need for effective attractions recommendations.
         """
         analysis = {
             "available_info": {},
@@ -131,7 +109,7 @@ class AttractionsHandler:
         }
         
         try:
-            # Parse available information from context arrays
+            # Parse what we know from previous conversations
             all_context = global_context + type_specific_context
             available_info = {}
             
@@ -140,13 +118,13 @@ class AttractionsHandler:
                     key, value = item.split(":", 1)
                     available_info[key.strip().lower()] = value.strip()
             
-            # Extract from current query using smart pattern matching
+            # Extract new info from their current question
             query_info = self._extract_info_from_query(user_query)
             available_info.update(query_info)
             
             analysis["available_info"] = available_info
             
-            # Analyze each critical category for attractions
+            # Check each category to see how well we're doing
             category_scores = {}
             missing_critical = []
             
@@ -166,13 +144,13 @@ class AttractionsHandler:
                 if category_score < 0.3:  # Less than 30% of category info
                     missing_critical.append(category)
             
-            # Calculate overall completeness score
+            # Calculate overall completeness
             overall_score = sum(scores["score"] for scores in category_scores.values()) / len(category_scores)
             analysis["completeness_score"] = overall_score
             analysis["category_scores"] = category_scores
             analysis["critical_gaps"] = missing_critical
             
-            # Determine information quality level
+            # Assign a quality level
             if overall_score >= self.completeness_thresholds["complete"]:
                 analysis["information_quality"] = "complete"
             elif overall_score >= self.completeness_thresholds["sufficient"]:
@@ -182,7 +160,7 @@ class AttractionsHandler:
             else:
                 analysis["information_quality"] = "minimal"
             
-            # Identify most important missing information for targeted questions
+            # Figure out what to ask about if we need more info
             if "location" in missing_critical:
                 analysis["missing_info"].append("destination_or_current_location")
             if "time_constraints" in missing_critical:
@@ -190,10 +168,10 @@ class AttractionsHandler:
             if "preferences" in missing_critical:
                 analysis["missing_info"].append("interests_and_activity_preferences")
             
-            logger.info(f"Attractions info analysis: {analysis['information_quality']} quality, score={overall_score:.2f}")
+            logger.info(f"Info analysis: {analysis['information_quality']} quality, score={overall_score:.2f}")
             
         except Exception as e:
-            logger.error(f"Error in attractions information analysis: {str(e)}")
+            logger.error(f"Error analyzing info completeness: {str(e)}")
             analysis["completeness_score"] = 0.1
             analysis["information_quality"] = "minimal"
         
@@ -201,14 +179,13 @@ class AttractionsHandler:
     
     def _extract_info_from_query(self, query: str) -> Dict[str, str]:
         """
-        PROMPT DESIGN: Extract key information directly from user query using smart patterns.
+        Pull useful info directly from what the user just said (fallback backup).
         
-        This enhances prompt effectiveness by capturing implicit information for attractions.
         """
         info = {}
         query_lower = query.lower()
         
-        # Time available patterns
+        # Look for time mentions
         time_patterns = [
             r'(\d+)\s*hours?',
             r'(\d+)\s*days?',
@@ -222,7 +199,7 @@ class AttractionsHandler:
                 info["time_available"] = match.group(1)
                 break
         
-        # Interest/activity patterns
+        # Look for interest indicators
         interest_patterns = [
             r'(museums?|galleries?|art)',
             r'(food|restaurants?|dining)',
@@ -241,7 +218,7 @@ class AttractionsHandler:
         if interests:
             info["interests"] = ", ".join(interests[:3])  # Limit to top 3
         
-        # Budget patterns
+        # Budget clues
         budget_patterns = [
             r'free\s+activities?',
             r'budget\s+friendly',
@@ -262,7 +239,7 @@ class AttractionsHandler:
                     info["budget_per_activity"] = f"${match.group(1)} per person"
                 break
         
-        # Destination patterns (if asking about specific place)
+        # Destination mentions
         destination_patterns = [
             r'things\s+to\s+do\s+in\s+([A-Za-z\s]+?)(?:\s|$|,|\.|!|\?)',
             r'attractions\s+in\s+([A-Za-z\s]+?)(?:\s|$|,|\.|!|\?)',
@@ -283,10 +260,8 @@ class AttractionsHandler:
                                       global_context: List[str], user_query: str,
                                       info_analysis: Dict[str, Any]) -> Dict[str, Any]:
         """
-        SMART DATA ROUTING: Intelligently assess when to use external attractions data.
+        Decide if our external attractions data is actually useful here.
         
-        Key insight: Only use external data when it's actually helpful and current.
-        Attractions data is only useful when we have a specific destination.
         """
         relevance = {
             "attractions_relevant": False,
@@ -296,18 +271,18 @@ class AttractionsHandler:
         }
         
         try:
-            # Check if we have external attractions data
+            # Do we even have attractions data?
             has_attractions = "attractions" in external_data and external_data["attractions"].get("success")
             
             if not has_attractions:
                 relevance["attractions_reason"] = "No external attractions data available"
                 return relevance
             
-            # Check if we have a destination established
+            # Do we know where they want to go?
             available_info = info_analysis.get("available_info", {})
             has_destination = "destination" in available_info
             
-            # Check for attractions-specific query indicators
+            # Are they actually asking about attractions?
             attractions_query_indicators = [
                 "things to do" in user_query.lower(),
                 "activities" in user_query.lower(),
@@ -317,7 +292,7 @@ class AttractionsHandler:
                 "recommendations" in user_query.lower() and "attraction" in user_query.lower()
             ]
             
-            # Assess relevance based on destination and query type
+            # Make the decision
             if has_destination and any(attractions_query_indicators):
                 relevance["attractions_relevant"] = True
                 relevance["use_attractions"] = True
@@ -338,7 +313,7 @@ class AttractionsHandler:
             else:
                 relevance["attractions_reason"] = "No specific destination identified - external attractions not relevant yet"
             
-            # Assess data freshness if we're using it
+            # Check data quality if we're planning to use it
             if relevance["use_attractions"] and has_attractions:
                 attractions_data = external_data["attractions"]
                 total_found = attractions_data.get("total_found", 0)
@@ -364,9 +339,13 @@ class AttractionsHandler:
                                    external_relevance: Dict[str, Any],
                                    recent_conversation: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
-        CONVERSATION QUALITY: Determine optimal response strategy for natural interaction.
+        Pick the best response strategy based on what we know and what we need.
         
-        This ensures appropriate responses based on information available and conversation context.
+        - If you know almost nothing: ask questions
+        - If you know some things: give some suggestions and ask for clarification
+        - If you know enough: give solid recommendations
+        - If you know everything: give detailed planning advice
+        
         """
         strategy = {
             "type": "question_focused",
@@ -382,7 +361,7 @@ class AttractionsHandler:
             has_critical_gaps = len(info_analysis["critical_gaps"]) > 0
             has_attractions_data = external_relevance["use_attractions"]
             
-            # Determine strategy based on information quality
+            # Pick strategy based on how much we know
             if quality == "minimal" or completeness < 0.3:
                 strategy["type"] = "question_focused"
                 strategy["approach"] = "Ask 2-3 targeted questions to gather essential information"
@@ -417,7 +396,7 @@ class AttractionsHandler:
                 strategy["questioning_strategy"] = "No questions needed"
                 strategy["recommendation_depth"] = "comprehensive"
             
-            # Adjust based on conversation length (avoid question loops)
+            # Avoid endless question loops in long conversations
             conversation_length = len(recent_conversation)
             if conversation_length > 4:  # Long conversation - be more decisive
                 if strategy["type"] == "question_focused":
@@ -429,10 +408,10 @@ class AttractionsHandler:
                 strategy["approach"] += " using current attractions data"
                 strategy["recommendation_depth"] += "_with_current_data"
             
-            logger.info(f"Selected attractions strategy: {strategy['type']} for {quality} quality information")
+            logger.info(f"Selected strategy: {strategy['type']} for {quality} quality information")
             
         except Exception as e:
-            logger.error(f"Error determining attractions response strategy: {str(e)}")
+            logger.error(f"Error determining response strategy: {str(e)}")
             # Safe fallback
             strategy["type"] = "hybrid"
             strategy["approach"] = "Provide helpful response with clarifying questions"
@@ -440,12 +419,12 @@ class AttractionsHandler:
         return strategy
     
     def _build_conversation_context(self, recent_conversation: List[Dict[str, Any]]) -> str:
-        """Build smart conversation context focusing on relevant exchanges."""
+        """Build conversation context so we don't repeat ourselves or ask the same questions."""
         if not recent_conversation:
             return ""
         
         try:
-            # Get last 3 conversation turns (6 messages max) for context efficiency
+            # Get last 3 conversation turns for context efficiency
             recent_messages = recent_conversation[-6:]
             
             context_lines = ["CONVERSATION CONTEXT:"]
@@ -453,7 +432,7 @@ class AttractionsHandler:
                 if "user_query" in msg:
                     context_lines.append(f"User: {msg['user_query']}")
                 elif "assistant_answer" in msg:
-                    # Summarize long assistant answers for context efficiency
+                    # Summarize long answers to keep context manageable
                     answer = msg['assistant_answer']
                     if len(answer) > 200:
                         answer = answer[:200] + "..."
@@ -470,9 +449,9 @@ class AttractionsHandler:
                                      type_specific_context: List[str],
                                      info_analysis: Dict[str, Any]) -> Dict[str, List[str]]:
         """
-        PROMPT DESIGN: Filter and prioritize context for maximum prompt efficiency.
-        
-        Only include the most relevant information for attractions recommendations.
+        Filter context to only include the most relevant stuff for attractions
+        (not overwhelm the prompt with irrelevant info).
+     
         """
         filtered = {
             "high_priority": [],    # Essential for attractions recommendations
@@ -483,7 +462,7 @@ class AttractionsHandler:
         try:
             all_context = global_context + type_specific_context
             
-            # Define priority keywords for attractions recommendations
+            # These are the most important things for attraction recommendations
             high_priority_keys = [
                 "destination", "interests", "time_available", "budget_per_activity", 
                 "activities", "accessibility_needs", "mobility"
@@ -510,10 +489,10 @@ class AttractionsHandler:
             for priority in filtered:
                 filtered[priority] = list(dict.fromkeys(filtered[priority]))
             
-            logger.info(f"Filtered attractions context: {len(filtered['high_priority'])} high, {len(filtered['medium_priority'])} medium priority items")
+            logger.info(f"Filtered context: {len(filtered['high_priority'])} high, {len(filtered['medium_priority'])} medium priority items")
             
         except Exception as e:
-            logger.error(f"Error filtering attractions context: {str(e)}")
+            logger.error(f"Error filtering context: {str(e)}")
             # Fallback: treat all as medium priority
             filtered["medium_priority"] = global_context + type_specific_context
         
@@ -525,30 +504,29 @@ class AttractionsHandler:
                               external_relevance: Dict[str, Any],
                               external_data: Dict[str, Any]) -> str:
         """
-        PROMPT DESIGN: Build strategically engineered prompt for attractions recommendations.
+        Build the actual prompt that gets sent to the AI.
         
-        This creates targeted, effective prompts based on comprehensive analysis.
         """
         
-        # Start building the prompt parts
+        # Start building the prompt
         prompt_parts = []
         
-        # 1. Expert role definition with domain expertise
+        # Set up the AI's role
         prompt_parts.append(
             "You are an expert local attractions consultant with deep knowledge of global destinations, "
             "current attractions, visitor preferences, activity planning, and personalized recommendations."
         )
         prompt_parts.append("")
         
-        # 2. Current query and context
+        # Show what the user asked
         prompt_parts.append(f'USER QUERY: "{user_query}"')
         prompt_parts.append("")
         
-        # 3. Conversation context (if relevant)
+        # Add conversation history if relevant
         if conversation_context:
             prompt_parts.append(conversation_context)
         
-        # 4. Available information (strategically organized by priority)
+        # Share what we know about the user (prioritized)
         if filtered_context["high_priority"]:
             prompt_parts.append("KEY VISITOR INFORMATION:")
             for item in filtered_context["high_priority"]:
@@ -561,12 +539,11 @@ class AttractionsHandler:
                 prompt_parts.append(f"• {item}")
             prompt_parts.append("")
         
-        # 5. External data (ONLY if determined to be relevant)
+        # Include external data if it's actually useful
         if external_relevance["use_attractions"] and "attractions" in external_data:
             attractions = external_data["attractions"]
             prompt_parts.append("CURRENT ATTRACTIONS DATA: (the user DOES NOT see this)")
             prompt_parts.append(f"• Destination: {attractions.get('destination', 'Unknown')}")
-            # REMOVED: prompt_parts.append(f"• Total attractions found: {attractions.get('total_found', 0)}")
             
             # Include actual attractions data if available
             attractions_list = attractions.get('attractions', [])
@@ -577,9 +554,9 @@ class AttractionsHandler:
                     price = attraction.get('price', 'Price not available')
                     description = attraction.get('description', '').strip()
                     
-                    # ADDED: Include description snippet after price
+                    # Include brief description after price
                     if description:
-                        # Limit description to first 100 characters for prompt efficiency
+                        # Limit description to keep prompt manageable
                         description_snippet = description[:100]
                         if len(description) > 100:
                             description_snippet += "..."
@@ -592,11 +569,11 @@ class AttractionsHandler:
 
             prompt_parts.append("")
         
-        # 6. Strategic instructions based on response strategy
+        # Give strategic instructions based on our analysis
         prompt_parts.append("STRATEGIC RESPONSE INSTRUCTIONS:")
         prompt_parts.append("")
         
-        # Chain-of-thought reasoning specific to strategy (ADVANCED PROMPT ENGINEERING)
+        # Different thinking process based on strategy
         prompt_parts.append("Chain-of-thought reasoning process:")
         
         if response_strategy["type"] == "question_focused":
@@ -638,7 +615,7 @@ class AttractionsHandler:
         
         prompt_parts.append("")
         
-        # 7. Response guidelines tailored to strategy (LENGTH AND QUALITY CONTROL)
+        # Response guidelines tailored to each strategy
         prompt_parts.append("Response guidelines:")
         
         strategy_guidelines = {
@@ -681,7 +658,7 @@ class AttractionsHandler:
         
         prompt_parts.append("")
         
-        # 8. External data usage instructions (SMART DATA ROUTING)
+        # Instructions on using external data
         if external_relevance["use_attractions"]:
             prompt_parts.append("External data usage:")
             prompt_parts.append("• USE the current attractions data provided - it's up-to-date and relevant")
@@ -694,7 +671,7 @@ class AttractionsHandler:
         
         prompt_parts.append("")
         
-        # 9. Quality and tone guidelines (CONVERSATION QUALITY)
+        # Quality and tone guidelines
         prompt_parts.extend([
             "Quality standards:",
             "• Be conversational, enthusiastic, and genuinely helpful",
@@ -707,11 +684,11 @@ class AttractionsHandler:
             "Generate your attractions recommendation response:"
         ])
         
-        # Join all parts into final prompt
+        # Put it all together
         final_prompt = "\n".join(prompt_parts)
         
-        # Log prompt engineering details for monitoring
-        logger.info(f"Strategic attractions prompt built: strategy={response_strategy['type']}, "
+        # Log what we built for debugging
+        logger.info(f"Built strategic prompt: strategy={response_strategy['type']}, "
                    f"info_quality={info_analysis['information_quality']}, "
                    f"attractions_used={external_relevance['use_attractions']}")
         
@@ -720,8 +697,8 @@ class AttractionsHandler:
     def _build_fallback_prompt(self, user_query: str, global_context: List[str], 
                               type_specific_context: List[str]) -> str:
         """
-        Fallback prompt when advanced analysis fails.
-        Still demonstrates good prompt engineering principles.
+        Simple fallback when our analysis breaks down.
+
         """
         return f"""You are an expert local attractions consultant with deep knowledge of destinations worldwide.
 
