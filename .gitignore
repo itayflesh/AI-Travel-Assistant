@@ -4,6 +4,7 @@ venv*
 .DS_Store
 core/__pycache__*
 llm/__pycache__*
+external_apis/__pycache__*
 storage/
 Travel Assistant Project Structure.md
 handlers/__pycache__/*

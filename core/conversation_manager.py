@@ -115,49 +115,59 @@ Please provide helpful travel advice based on the available information."""
     
     def _extract_destination_from_context(self, classification_result: Dict[str, Any]) -> Optional[str]:
         """
-        Extract destination from classification result for external API calls.
+        Extract destination from classification result AND accumulated global context for external API calls.
         
-        DEBUGGING: Added extensive logging to see what's happening.
+        SMART APPROACH: Check both new classification and accumulated context to handle follow-up queries.
         """
         try:
             # DEBUG: Log the entire classification result
             logger.info(f"=== DEBUGGING DESTINATION EXTRACTION ===")
             logger.info(f"Full classification result: {classification_result}")
             
-            # Check global information first
+            # STEP 1: Check NEW classification result first
             global_info = classification_result.get("key_Global_information", [])
-            logger.info(f"Global info array: {global_info}")
-            logger.info(f"Global info type: {type(global_info)}")
+            logger.info(f"NEW Global info array: {global_info}")
             
             for i, info in enumerate(global_info):
-                logger.info(f"Processing global info item {i}: '{info}' (type: {type(info)})")
-                logger.info(f"Lowercase version: '{info.lower()}'")
-                logger.info(f"Starts with 'destination:'? {info.lower().startswith('destination:')}")
-                
+                logger.info(f"Processing NEW global info item {i}: '{info}' (type: {type(info)})")
                 if info.lower().startswith("destination:"):
                     destination = info.split(":", 1)[1].strip()
-                    logger.info(f"Extracted destination: '{destination}'")
                     if destination:
-                        logger.info(f"SUCCESS: Found destination in global context: {destination}")
+                        logger.info(f"SUCCESS: Found destination in NEW classification: {destination}")
                         return destination
-                    else:
-                        logger.warning(f"Destination was empty after extraction from: '{info}'")
             
-            # Check type-specific information
+            # Check type-specific information from NEW classification
             type_info = classification_result.get("key_specific_type_information", [])
-            logger.info(f"Type-specific info: {type_info}")
+            logger.info(f"NEW Type-specific info: {type_info}")
             
             for info in type_info:
-                logger.info(f"Processing type-specific item: '{info}'")
+                logger.info(f"Processing NEW type-specific item: '{info}'")
                 if info.lower().startswith("destination:"):
                     destination = info.split(":", 1)[1].strip()
                     if destination:
-                        logger.info(f"Found destination in type-specific context: {destination}")
+                        logger.info(f"SUCCESS: Found destination in NEW type-specific context: {destination}")
                         return destination
             
-            # Try to extract from the original query as fallback
+            # STEP 2: Check ACCUMULATED global context (SMART FALLBACK!)
+            logger.info("NEW classification has no destination - checking ACCUMULATED global context...")
+            try:
+                accumulated_global_context = self.storage._get_global_context()
+                logger.info(f"ACCUMULATED Global context: {accumulated_global_context}")
+                
+                for item in accumulated_global_context:
+                    logger.info(f"Processing ACCUMULATED item: '{item}'")
+                    if item.lower().startswith("destination:"):
+                        destination = item.split(":", 1)[1].strip()
+                        if destination:
+                            logger.info(f"SUCCESS: Found destination in ACCUMULATED global context: {destination}")
+                            return destination
+                            
+            except Exception as e:
+                logger.error(f"Error checking accumulated global context: {str(e)}")
+            
+            # STEP 3: Try to extract from the original query as final fallback
             query = classification_result.get("query", "")
-            logger.info(f"Fallback: trying to extract from query: '{query}'")
+            logger.info(f"Final fallback: trying to extract from query: '{query}'")
             
             # Simple extraction patterns for common queries
             import re
@@ -175,10 +185,10 @@ Please provide helpful travel advice based on the available information."""
                 if match:
                     destination = match.group(1).strip()
                     if len(destination) > 2:  # Avoid single words
-                        logger.info(f"FALLBACK SUCCESS: Extracted destination from query: {destination}")
+                        logger.info(f"REGEX FALLBACK SUCCESS: Extracted destination from query: {destination}")
                         return destination
             
-            logger.warning("FAILED: No destination found in classification result")
+            logger.warning("FAILED: No destination found in classification result OR accumulated context")
             return None
             
         except Exception as e:
