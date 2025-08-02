@@ -416,10 +416,7 @@ class DestinationHandler:
                 if "user_query" in msg:
                     context_lines.append(f"User: {msg['user_query']}")
                 elif "assistant_answer" in msg:
-                    # Truncate long responses for context efficiency
                     answer = msg['assistant_answer']
-                    if len(answer) > 200:
-                        answer = answer[:200] + "..."
                     context_lines.append(f"Assistant: {answer}")
             
             context_lines.append("")  # Empty line for separation
