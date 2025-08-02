@@ -121,7 +121,7 @@ MANDATORY CLASSIFICATION TYPES (you MUST choose exactly one):
 ANALYSIS FRAMEWORK:
 Step 1: What is the user's primary intent?
 Step 2: Which of the 3 mandatory types best matches this intent?
-Step 3: Does answering this query require external data? We ONLY have 2 external data sources: Right now WEATHER data and CURRENT LOCAL ATTRACTIONS data. If the query doesn't need right now weather information OR current attractions information, then external_data_needed should be False and external_data_type should be "none".
+Step 3: Does Right NOW WEATHER external data or LOCAL ATTRACTIONS external data is needed for answering this query?. If the query doesn't need 'right now' weather information OR attractions information, then external_data_needed should be False and external_data_type should be "none". there is NO any other external data sources! 
 Step 4: What key user preferences or information can be extracted for future personalization?
 
 KEY INFORMATION EXTRACTION:
