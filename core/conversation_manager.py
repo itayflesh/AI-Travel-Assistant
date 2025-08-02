@@ -189,9 +189,10 @@ Please provide helpful travel advice based on the available information."""
         """
         Get relevant external data based on query type and classification.
         
-        UPDATED: Now includes both weather and attractions API integration with Redis caching.
+        UPDATED: Now supports weather and attractions data for ALL 3 query types when needed.
+        ANY query type can request weather, attractions, or both based on classification.
         
-        This ensures handlers receive the right external data for their specialized prompts.
+        This ensures ALL handlers receive the right external data for their specialized prompts.
         """
         external_data = {}
         
@@ -202,93 +203,61 @@ Please provide helpful travel advice based on the available information."""
             
             external_data_type = classification_result.get("external_data_type", "none")
             
-            # Get weather data for packing suggestions (NEW!)
-            if query_type == "packing_suggestions" and external_data_type in ["weather", "both"]:
+            # Get weather data for ANY query type that needs it (UNIVERSAL!)
+            if external_data_type in ["weather", "both"]:
                 # First check Redis cache
                 weather_data = self.storage.get_external_data("weather_external_data")
                 
                 if weather_data:
                     external_data["weather"] = weather_data
-                    logger.info("Using cached weather data for packing handler")
+                    logger.info(f"Using cached weather data for {query_type} handler")
                 else:
                     # Cache miss - fetch from API and store in Redis
                     destination = self._extract_destination_from_context(classification_result)
                     
                     if destination:
-                        logger.info(f"Fetching fresh weather data for: {destination}")
+                        logger.info(f"Fetching fresh weather data for {query_type}: {destination}")
                         weather_result = get_weather_for_destination(destination)
                         
                         if weather_result.get("success"):
                             # Store in Redis with 1-hour TTL
                             self.storage.save_external_data("weather_external_data", weather_result)
                             external_data["weather"] = weather_result
-                            logger.info(f"Fetched and cached weather for {destination}: {weather_result.get('current_weather', {}).get('temperature', 'N/A')}°C")
+                            logger.info(f"Fetched and cached weather for {query_type} - {destination}: {weather_result.get('current_weather', {}).get('temperature', 'N/A')}°C")
                         else:
                             # API failed - log error but don't crash
-                            logger.error(f"Weather API failed: {weather_result.get('error')}")
+                            logger.error(f"Weather API failed for {query_type}: {weather_result.get('error')}")
                             # Don't add to external_data, handler will work without it
                     else:
-                        logger.warning("No destination found for weather query - skipping API call")
+                        logger.warning(f"No destination found for {query_type} weather query - skipping API call")
             
-            # Get attractions data for local attractions (EXISTING)
-            elif query_type == "local_attractions" and external_data_type in ["attractions", "both"]:
+            # Get attractions data for ANY query type that needs it (UNIVERSAL!)
+            if external_data_type in ["attractions", "both"]:
                 # First check Redis cache
                 attractions_data = self.storage.get_external_data("attractions_external_data")
                 
                 if attractions_data:
                     external_data["attractions"] = attractions_data
-                    logger.info("Using cached attractions data for attractions handler")
+                    logger.info(f"Using cached attractions data for {query_type} handler")
                 else:
                     # Cache miss - fetch from API and store in Redis
                     destination = self._extract_destination_from_context(classification_result)
                     
                     if destination:
-                        logger.info(f"Fetching fresh attractions data for: {destination}")
+                        logger.info(f"Fetching fresh attractions data for {query_type}: {destination}")
                         attractions_result = get_attractions_for_destination(destination)
                         
                         if attractions_result.get("success"):
                             # Store in Redis with 1-hour TTL
                             self.storage.save_external_data("attractions_external_data", attractions_result)
                             external_data["attractions"] = attractions_result
-                            logger.info(f"Fetched and cached {attractions_result.get('total_found', 0)} attractions for {destination}")
+                            logger.info(f"Fetched and cached {attractions_result.get('total_found', 0)} attractions for {query_type} - {destination}")
                         else:
                             # API failed - log error but don't crash
-                            logger.error(f"Attractions API failed: {attractions_result.get('error')}")
+                            logger.error(f"Attractions API failed for {query_type}: {attractions_result.get('error')}")
                             # Don't add to external_data, handler will work without it
                     else:
-                        logger.warning("No destination found for attractions query - skipping API call")
-            
-            # Handle "both" data type (weather + attractions) (NEW!)
-            elif external_data_type == "both":
-                # Get weather data
-                weather_data = self.storage.get_external_data("weather_external_data")
-                if weather_data:
-                    external_data["weather"] = weather_data
-                    logger.info("Added cached weather data for combined handler")
-                else:
-                    # Try to fetch weather if destination available
-                    destination = self._extract_destination_from_context(classification_result)
-                    if destination:
-                        weather_result = get_weather_for_destination(destination)
-                        if weather_result.get("success"):
-                            self.storage.save_external_data("weather_external_data", weather_result)
-                            external_data["weather"] = weather_result
-                            logger.info("Fetched and cached weather for combined handler")
-                
-                # Get attractions data
-                attractions_data = self.storage.get_external_data("attractions_external_data")
-                if attractions_data:
-                    external_data["attractions"] = attractions_data
-                    logger.info("Added cached attractions data for combined handler")
-                else:
-                    # Try to fetch attractions if destination available
-                    destination = self._extract_destination_from_context(classification_result)
-                    if destination:
-                        attractions_result = get_attractions_for_destination(destination)
-                        if attractions_result.get("success"):
-                            self.storage.save_external_data("attractions_external_data", attractions_result)
-                            external_data["attractions"] = attractions_result
-                            logger.info("Fetched and cached attractions for combined handler")
+                        logger.warning(f"No destination found for {query_type} attractions query - skipping API call")
             
         except Exception as e:
             logger.error(f"Error getting external data for {query_type}: {str(e)}")
