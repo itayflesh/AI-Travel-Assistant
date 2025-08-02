@@ -16,6 +16,65 @@ API_SECRET = os.getenv("AMADEUS_API_SECRET")
 RADIUS = 20  # in kilometers
 LIMIT = 10   # Reduced from 50 to 10 for prompt efficiency
 
+def get_tourism_center_coordinates(destination, gemini_client):
+    """
+    Ask Gemini to extract lat/lon of the main tourism center for destination.
+    
+    Args:
+        destination: City or place name
+        gemini_client: Initialized GeminiClient instance
+        
+    Returns:
+        Dict with latitude, longitude, and tourism_center_name or error
+    """
+    try:
+        prompt = f"""Extract the latitude and longitude of the main tourism center for: "{destination}"
+
+Return ONLY a JSON object with this exact format:
+{{
+    "latitude": [decimal_latitude],
+    "longitude": [decimal_longitude],
+    "tourism_center_name": "[specific area/district name]"
+}}
+
+Examples:
+- For "Paris" → tourism center is around Louvre/Champs-Élysées area
+- For "Tokyo" → tourism center is around Shibuya/Shinjuku area  
+- For "New York" → tourism center is around Times Square/Manhattan
+- For "London" → tourism center is around Westminster/Covent Garden area
+
+Focus on the main tourist district where visitors typically stay and explore.
+If you cannot determine coordinates, return: {{"error": "Cannot determine coordinates"}}"""
+
+        response = gemini_client.generate_response(prompt, max_tokens=200)
+        
+        # Clean and parse JSON
+        response_clean = response.strip()
+        
+        # Find JSON block if wrapped in markdown
+        if "```json" in response_clean:
+            json_start = response_clean.find("```json") + 7
+            json_end = response_clean.find("```", json_start)
+            response_clean = response_clean[json_start:json_end].strip()
+        elif "```" in response_clean:
+            json_start = response_clean.find("```") + 3
+            json_end = response_clean.find("```", json_start)
+            response_clean = response_clean[json_start:json_end].strip()
+        
+        coords = json.loads(response_clean)
+        
+        # Validate response format
+        if "latitude" in coords and "longitude" in coords:
+            logger.info(f"Gemini geocoding successful for {destination}: {coords.get('tourism_center_name', 'Unknown area')}")
+            return coords
+        else:
+            logger.warning(f"Gemini geocoding returned invalid format for {destination}")
+            return {"error": "Invalid response format"}
+            
+    except Exception as e:
+        logger.error(f"Gemini geocoding failed for {destination}: {str(e)}")
+        return {"error": f"Gemini geocoding error: {str(e)}"}
+
 # --- STEP 1: GET ACCESS TOKEN ---
 def get_access_token():
     """Get OAuth access token from Amadeus API"""
@@ -77,13 +136,15 @@ def format_activities(raw_data, limit=LIMIT):
         })
     return formatted
 
-# --- NEW: MAIN INTEGRATION FUNCTION ---
-def get_attractions_for_destination(destination):
+# --- ENHANCED: MAIN INTEGRATION FUNCTION WITH GEMINI GEOCODING ---
+def get_attractions_for_destination(destination, gemini_client=None):
     """
-    Main function for integration with the travel assistant.
+    ENHANCED: Main function for integration with the travel assistant.
+    Now supports Gemini geocoding for more precise tourism center attractions.
     
     Args:
         destination: City or place name (e.g., "Paris", "Rome")
+        gemini_client: Optional GeminiClient instance for tourism center geocoding
         
     Returns:
         Dict with attractions data or error information
@@ -108,11 +169,52 @@ def get_attractions_for_destination(destination):
         # Step 1: Get access token
         token = get_access_token()
         
-        # Step 2: Geocode destination
-        lat, lon = geocode_place(token, destination)
-        logger.info(f"Coordinates for {destination}: {lat}, {lon}")
+        # NEW: Try Gemini geocoding first if available
+        if gemini_client:
+            logger.info(f"Attempting Gemini geocoding for tourism center of {destination}")
+            coords = get_tourism_center_coordinates(destination, gemini_client)
+            
+            if "latitude" in coords and "longitude" in coords:
+                logger.info(f"Using Gemini coordinates for {destination}: {coords.get('tourism_center_name', 'Unknown area')}")
+                
+                try:
+                    # Step 3: Get activities using Gemini coordinates
+                    raw_data = get_activities(token, coords["latitude"], coords["longitude"], radius=RADIUS)
+                    
+                    # Step 4: Format activities
+                    formatted_activities = format_activities(raw_data, limit=LIMIT)
+                    
+                    # Return structured data for integration
+                    result = {
+                        "destination": destination,
+                        "coordinates": {
+                            "latitude": coords["latitude"], 
+                            "longitude": coords["longitude"]
+                        },
+                        "attractions": formatted_activities,
+                        "total_found": len(formatted_activities),
+                        "search_radius_km": RADIUS,
+                        "geocoding_method": "gemini_tourism_center",
+                        "tourism_center": coords.get("tourism_center_name", "Unknown area"),
+                        "success": True
+                    }
+                    
+                    logger.info(f"Successfully fetched {len(formatted_activities)} attractions via Gemini coordinates for {destination}")
+                    return result
+                    
+                except Exception as e:
+                    logger.warning(f"Amadeus activities API failed with Gemini coordinates for {destination}: {str(e)}, falling back to Amadeus geocoding")
+            else:
+                logger.info(f"Gemini geocoding failed for {destination}: {coords.get('error', 'Unknown error')}, falling back to Amadeus geocoding")
         
-        # Step 3: Get activities
+        # EXISTING: Fallback to Amadeus geocoding
+        logger.info(f"Using Amadeus geocoding for {destination}")
+        
+        # Step 2: Geocode destination using Amadeus
+        lat, lon = geocode_place(token, destination)
+        logger.info(f"Amadeus coordinates for {destination}: {lat}, {lon}")
+        
+        # Step 3: Get activities using Amadeus coordinates
         raw_data = get_activities(token, lat, lon, radius=RADIUS)
         
         # Step 4: Format activities
@@ -125,10 +227,11 @@ def get_attractions_for_destination(destination):
             "attractions": formatted_activities,
             "total_found": len(formatted_activities),
             "search_radius_km": RADIUS,
+            "geocoding_method": "amadeus_city_lookup",
             "success": True
         }
         
-        logger.info(f"Successfully fetched {len(formatted_activities)} attractions for {destination}")
+        logger.info(f"Successfully fetched {len(formatted_activities)} attractions via Amadeus geocoding for {destination}")
         return result
         
     except requests.exceptions.HTTPError as e:

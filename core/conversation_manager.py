@@ -26,6 +26,8 @@ class ConversationManager:
     UPDATED: Now uses advanced prompt engineering handlers instead of generic prompts.
     Each handler implements chain-of-thought reasoning and specialized prompt techniques.
     
+    ENHANCED: Now passes Gemini client to external APIs for tourism center geocoding.
+    
     Demonstrates production-ready AI engineering architecture for Navan assignment.
     """
     
@@ -46,7 +48,7 @@ class ConversationManager:
             "local_attractions": self.attractions_handler
         }
         
-        logger.info("ConversationManager initialized with specialized handlers")
+        logger.info("ConversationManager initialized with specialized handlers and Gemini geocoding support")
     
     # Fix for conversation_manager.py - replace the route_to_handler method
 
@@ -227,7 +229,7 @@ Please provide helpful travel advice based on the available information."""
         """
         Get relevant external data based on query type and classification.
         
-        UPDATED: Now supports weather and attractions data for ALL 3 query types when needed.
+        ENHANCED: Now passes Gemini client to external APIs for tourism center geocoding.
         ANY query type can request weather, attractions, or both based on classification.
         
         This ensures ALL handlers receive the right external data for their specialized prompts.
@@ -255,13 +257,23 @@ Please provide helpful travel advice based on the available information."""
                     
                     if destination:
                         logger.info(f"Fetching fresh weather data for {query_type}: {destination}")
-                        weather_result = get_weather_for_destination(destination)
+                        # ENHANCED: Pass Gemini client for tourism center geocoding
+                        weather_result = get_weather_for_destination(destination, self.gemini)
                         
                         if weather_result.get("success"):
                             # Store in Redis with 1-hour TTL
                             self.storage.save_external_data("weather_external_data", weather_result)
                             external_data["weather"] = weather_result
-                            logger.info(f"Fetched and cached weather for {query_type} - {destination}: {weather_result.get('current_weather', {}).get('temperature', 'N/A')}°C")
+                            
+                            # Log geocoding method used
+                            geocoding_method = weather_result.get("geocoding_method", "unknown")
+                            temp = weather_result.get('current_weather', {}).get('temperature', 'N/A')
+                            
+                            if geocoding_method == "gemini_tourism_center":
+                                tourism_center = weather_result.get('tourism_center', 'Unknown area')
+                                logger.info(f"Fetched and cached weather via Gemini tourism center for {query_type} - {destination} ({tourism_center}): {temp}°C")
+                            else:
+                                logger.info(f"Fetched and cached weather via city lookup for {query_type} - {destination}: {temp}°C")
                         else:
                             # API failed - log error but don't crash
                             logger.error(f"Weather API failed for {query_type}: {weather_result.get('error')}")
@@ -283,13 +295,23 @@ Please provide helpful travel advice based on the available information."""
                     
                     if destination:
                         logger.info(f"Fetching fresh attractions data for {query_type}: {destination}")
-                        attractions_result = get_attractions_for_destination(destination)
+                        # ENHANCED: Pass Gemini client for tourism center geocoding
+                        attractions_result = get_attractions_for_destination(destination, self.gemini)
                         
                         if attractions_result.get("success"):
                             # Store in Redis with 1-hour TTL
                             self.storage.save_external_data("attractions_external_data", attractions_result)
                             external_data["attractions"] = attractions_result
-                            logger.info(f"Fetched and cached {attractions_result.get('total_found', 0)} attractions for {query_type} - {destination}")
+                            
+                            # Log geocoding method used
+                            geocoding_method = attractions_result.get("geocoding_method", "unknown")
+                            total_found = attractions_result.get('total_found', 0)
+                            
+                            if geocoding_method == "gemini_tourism_center":
+                                tourism_center = attractions_result.get('tourism_center', 'Unknown area')
+                                logger.info(f"Fetched and cached {total_found} attractions via Gemini tourism center for {query_type} - {destination} ({tourism_center})")
+                            else:
+                                logger.info(f"Fetched and cached {total_found} attractions via Amadeus geocoding for {query_type} - {destination}")
                         else:
                             # API failed - log error but don't crash
                             logger.error(f"Attractions API failed for {query_type}: {attractions_result.get('error')}")
@@ -329,9 +351,10 @@ Please provide helpful travel advice based on the available information."""
 
     def process_user_message(self, user_input):
         """
-        UPDATED: Main processing logic now uses specialized handlers + weather + attractions APIs.
+        ENHANCED: Main processing logic now uses specialized handlers + Gemini geocoding for APIs.
         
-        This replaces the old generic prompt building with advanced handler routing.
+        This replaces the old generic prompt building with advanced handler routing and
+        tourism center geocoding for more precise external data.
         """
         classification_result = None
         response = None
@@ -357,7 +380,7 @@ Please provide helpful travel advice based on the available information."""
                 "error": str(e)
             }
         
-        # Step 2: Get external data if needed (UPDATED WITH WEATHER + ATTRACTIONS)
+        # Step 2: Get external data if needed (ENHANCED WITH GEMINI GEOCODING)
         external_data = self.get_external_data_for_query_type(
             classification_result["type"], 
             classification_result
@@ -402,14 +425,14 @@ Please provide helpful travel advice based on the available information."""
             type_specific_context = []
             recent_conversation = []
         
-        # Step 5: Route to specialized handler (ENHANCED WITH WEATHER + ATTRACTIONS DATA)
+        # Step 5: Route to specialized handler (ENHANCED WITH GEMINI GEOCODING DATA)
         try:
             final_prompt = self.route_to_handler(
                 query_type=classification_result["type"],
                 user_query=user_input,
                 global_context=global_context,
                 type_specific_context=type_specific_context,
-                external_data=external_data,  # Now includes both weather and attractions data when available
+                external_data=external_data,  # Now includes Gemini geocoding data when available
                 recent_conversation=recent_conversation
             )
             
@@ -428,7 +451,7 @@ Please provide helpful travel advice based on the available information."""
             try:
                 # Save assistant answer
                 self.storage.save_assistant_answer(response)
-                logger.info(f"Used specialized {classification_result['type']} handler")
+                logger.info(f"Used specialized {classification_result['type']} handler with Gemini geocoding support")
                 
             except Exception as e:
                 logger.error(f"Error saving assistant answer: {str(e)}")
