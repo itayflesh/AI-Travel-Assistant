@@ -527,7 +527,24 @@ class DestinationHandler:
             weather = external_data["weather"]
             prompt_parts.append("CURRENT WEATHER DATA:")
             prompt_parts.append(f"• Location: {weather.get('location', 'Unknown')}")
-            prompt_parts.append(f"• Current: {weather.get('current_weather', {}).get('temperature', 'N/A')}°C, {weather.get('current_weather', {}).get('description', 'N/A')}")
+            
+            current_weather = weather.get('current_weather', {})
+            if current_weather:
+                temp = current_weather.get('temperature', 'N/A')
+                desc = current_weather.get('description', 'N/A')
+                feels_like = current_weather.get('feels_like', 'N/A')
+                prompt_parts.append(f"• Current: {temp}°C (feels like {feels_like}°C), {desc}")
+            
+            forecast = weather.get('forecast', [])
+            if forecast:
+                prompt_parts.append("• 5-day forecast highlights:")
+                # Show key forecast points for packing decisions
+                for i, entry in enumerate(forecast):  # Show all entries 
+                    dt_str = entry.get('datetime', '')
+                    temp = entry.get('temperature', 'N/A')
+                    desc = entry.get('description', 'N/A')
+                    prompt_parts.append(f"  - {dt_str}: {temp}°C, {desc}")
+            
             prompt_parts.append("")
         
         if external_relevance["use_attractions"] and "attractions" in external_data:
@@ -540,11 +557,8 @@ class DestinationHandler:
         
         # 6. Strategic instructions based on response strategy
         prompt_parts.append("STRATEGIC RESPONSE INSTRUCTIONS:")
-        prompt_parts.append("")
         
-        # Chain-of-thought reasoning specific to strategy (ADVANCED PROMPT ENGINEERING)
-        prompt_parts.append("Chain-of-thought reasoning process:")
-        
+         
         if response_strategy["type"] == "question_focused":
             prompt_parts.extend([
                 "1. Analyze what critical information is missing for destination recommendations",
