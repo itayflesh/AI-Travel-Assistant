@@ -48,24 +48,16 @@ class ConversationManager:
         
         logger.info("ConversationManager initialized with specialized handlers")
     
+    # Fix for conversation_manager.py - replace the route_to_handler method
+
     def route_to_handler(self, query_type: str, user_query: str, 
                         global_context: List[str], type_specific_context: List[str],
                         external_data: Dict[str, Any], recent_conversation: List[Dict[str, Any]]) -> str:
         """
         Route the query to the appropriate specialized handler.
         
-        This replaces the old generic prompt building with advanced, type-specific prompts.
-        
-        Args:
-            query_type: The classified query type
-            user_query: Original user query
-            global_context: Global context array
-            type_specific_context: Type-specific context array  
-            external_data: External API data
-            recent_conversation: Recent conversation history
-            
-        Returns:
-            Engineered prompt ready for Gemini
+        ENHANCED: Now properly maps type-specific context to correct handler.
+        FIXED: Use storage.valid_query_types instead of self.valid_query_types
         """
         try:
             # Get the appropriate handler
@@ -75,20 +67,53 @@ class ConversationManager:
                 logger.warning(f"No handler found for query type: {query_type}, using fallback")
                 return self._build_fallback_prompt(user_query, global_context, type_specific_context, external_data)
             
-            # Use the specialized handler to build the prompt
+            # FIXED: Get the correct type-specific context for this handler
+            all_type_specific_contexts = {}
+            
+            try:
+                # FIXED: Use self.storage.valid_query_types (from storage class)
+                for handler_type in self.storage.valid_query_types:
+                    type_context = self.storage._get_type_specific_context(handler_type)
+                    all_type_specific_contexts[handler_type] = type_context
+            except Exception as e:
+                logger.warning(f"Could not get all type-specific contexts: {str(e)}")
+                # Fallback to just the current type
+                all_type_specific_contexts[query_type] = type_specific_context
+            
+            # For destination handler, we want destination-specific context primarily,
+            # but also relevant info from other types
+            handler_specific_context = type_specific_context.copy()  # Current type's context
+            
+            # For destination recommendations, also include relevant packing/attractions info
+            if query_type == "destination_recommendations":
+                # Add relevant constraints from packing (like luggage preferences that affect destination choice)
+                packing_context = all_type_specific_contexts.get("packing_suggestions", [])
+                for item in packing_context:
+                    if any(keyword in item.lower() for keyword in ["luggage_type", "constraints", "accessibility"]):
+                        if item not in handler_specific_context:
+                            handler_specific_context.append(item)
+                
+                # Add relevant time/mobility info from attractions
+                attractions_context = all_type_specific_contexts.get("local_attractions", [])
+                for item in attractions_context:
+                    if any(keyword in item.lower() for keyword in ["time_available", "mobility", "accessibility"]):
+                        if item not in handler_specific_context:
+                            handler_specific_context.append(item)
+            
+            # Use the enhanced handler to build the prompt
             engineered_prompt = handler.build_final_prompt(
                 user_query=user_query,
                 global_context=global_context,
-                type_specific_context=type_specific_context,
+                type_specific_context=handler_specific_context,  # Enhanced context
                 external_data=external_data,
                 recent_conversation=recent_conversation
             )
             
-            logger.info(f"Successfully routed to {query_type} handler, prompt length: {len(engineered_prompt)} chars")
+            logger.info(f"Successfully routed to enhanced {query_type} handler, prompt length: {len(engineered_prompt)} chars")
             return engineered_prompt
             
         except Exception as e:
-            logger.error(f"Error routing to handler for {query_type}: {str(e)}")
+            logger.error(f"Error routing to enhanced handler for {query_type}: {str(e)}")
             return self._build_fallback_prompt(user_query, global_context, type_specific_context, external_data)
     
     def _build_fallback_prompt(self, user_query: str, global_context: List[str], 
