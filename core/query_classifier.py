@@ -108,7 +108,7 @@ class QueryClassifier:
         Returns:
             Dict with type, external_data_needed, and array-based key information for all types
         """
-    # Build conversation context if history is available
+        # Build conversation context if history is available
         conversation_context = ""
         if conversation_history and len(conversation_history) > 0:
             # Get last 6 messages (3 exchanges) to avoid making prompt too long
@@ -126,89 +126,89 @@ class QueryClassifier:
                     conversation_context += f"Assistant: {answer}\n"
             conversation_context += "\n"
 
-            prompt = f"""You are an expert travel query classifier. Analyze this travel query and provide a structured response.
+        # Build the prompt 
+        prompt = f"""You are an expert travel query classifier. Analyze this travel query and provide a structured response.
 
-{conversation_context}CURRENT QUERY: "{query}"
+        {conversation_context}QUERY: "{query}"
 
-MANDATORY CLASSIFICATION TYPES (you MUST choose exactly one):
-1. "destination_recommendations" - asking where to go, travel suggestions, destination advice
-2. "packing_suggestions" - asking what to pack, bring, or wear for travel
-3. "local_attractions" - asking about things to do, see, or experience at a destination
+        MANDATORY CLASSIFICATION TYPES (you MUST choose exactly one):
+        1. "destination_recommendations" - asking where to go, travel suggestions, destination advice
+        2. "packing_suggestions" - asking what to pack, bring, or wear for travel
+        3. "local_attractions" - asking about things to do, see, or experience at a destination
 
-ANALYSIS FRAMEWORK:
-Step 1: What is the user's primary intent?
-Step 2: Which of the 3 mandatory types best matches this intent?
-Step 3: Does answering this query require external data? We ONLY have 2 external data sources: Right NOW + 5 days forecast WEATHER data and CURRENT LOCAL ATTRACTIONS data. If the query doesn't need right now weather information OR current attractions information, then external_data_needed should be False and external_data_type should be "none".
-Step 4: What key user preferences or information can be extracted for future personalization?
+        ANALYSIS FRAMEWORK:
+        Step 1: What is the user's primary intent?
+        Step 2: Which of the 3 mandatory types best matches this intent?
+        Step 3: Does answering this query require external data? We ONLY have 2 external data sources: Right NOW + 5 days forecast WEATHER data and CURRENT LOCAL ATTRACTIONS data. If the query doesn't need right now weather information OR current attractions information, then external_data_needed should be False and external_data_type should be "none".
+        Step 4: What key user preferences or information can be extracted for future personalization?
 
-KEY INFORMATION EXTRACTION:
-Extract information as "key: value" formatted strings and categorize into:
+        KEY INFORMATION EXTRACTION:
+        Extract information as "key: value" formatted strings and categorize into:
 
-**key_Global_information** (shared across ALL query types):
-ONLY if you found information that is relevant to all the 3 above types, such as:
-- A particular region of the world or continent (e.g., "region: Southeast Asia", "continent: Europe")
-- destination: [location name] (e.g., "destination: Tokyo", "destination: France" - Country / Region / Continent)  
-- travel_dates: [when traveling] (e.g., "travel_dates: March 2025", "travel_dates: next summer")
-- duration: [trip length] (e.g., "duration: 2 weeks", "duration: long weekend")
-- budget: [money available] (e.g., "budget: $3000", "budget: tight budget")
-- group_size: [number of people] (e.g., "group_size: 2 people", "group_size: solo travel")
-- interests: [general interests] (e.g., "interests: culture and food", "interests: adventure sports")
+        **key_Global_information** (shared across ALL query types):
+        ONLY if you found information that is relevant to all the 3 above types, such as:
+        - A particular region of the world or continent (e.g., "region: Southeast Asia", "continent: Europe")
+        - destination: [location name] (e.g., "destination: Tokyo", "destination: France" - Country / Region / Continent)  
+        - travel_dates: [when traveling] (e.g., "travel_dates: March 2025", "travel_dates: next summer")
+        - duration: [trip length] (e.g., "duration: 2 weeks", "duration: long weekend")
+        - budget: [money available] (e.g., "budget: $3000", "budget: tight budget")
+        - group_size: [number of people] (e.g., "group_size: 2 people", "group_size: solo travel")
+        - interests: [general interests] (e.g., "interests: culture and food", "interests: adventure sports")
 
-**key_specific_destination_recommendations_information** (for destination recommendations):
-- travel_style: [how they like to travel] (e.g., "travel_style: luxury", "travel_style: backpacking", "travel_style: romantic getaway")
-- constraints: [limitations] (e.g., "constraints: no long flights", "constraints: visa-free countries", "constraints: minimal luggage needed")
-- climate_preference: [weather preference] (e.g., "climate_preference: warm beaches", "climate_preference: cool mountains")
-- other: [additional destination_recommendations key information] (e.g., "composition of group: family-friendly")
+        **key_specific_destination_recommendations_information** (for destination recommendations):
+        - travel_style: [how they like to travel] (e.g., "travel_style: luxury", "travel_style: backpacking", "travel_style: romantic getaway")
+        - constraints: [limitations] (e.g., "constraints: no long flights", "constraints: visa-free countries", "constraints: minimal luggage needed")
+        - climate_preference: [weather preference] (e.g., "climate_preference: warm beaches", "climate_preference: cool mountains")
+        - other: [additional destination_recommendations key information] (e.g., "composition of group: family-friendly")
 
-**key_specific_packing_suggestions_information** (for packing suggestions):
-- activities: [planned activities] (e.g., "activities: hiking and swimming", "activities: business meetings")
-- luggage_type: [bag preference] (e.g., "luggage_type: backpack", "luggage_type: suitcase", "luggage_type: minimal luggage")
-- special_needs: [special requirements] (e.g., "special_needs: cold weather gear", "special_needs: formal clothes")
-- laundry_availability: [washing clothes] (e.g., "laundry_availability: hotel service", "laundry_availability: none")
-- other: [additional packing_suggestions key information] (e.g., "other: traveling with kids", "other: long-term travel")
+        **key_specific_packing_suggestions_information** (for packing suggestions):
+        - activities: [planned activities] (e.g., "activities: hiking and swimming", "activities: business meetings")
+        - luggage_type: [bag preference] (e.g., "luggage_type: backpack", "luggage_type: suitcase", "luggage_type: minimal luggage")
+        - special_needs: [special requirements] (e.g., "special_needs: cold weather gear", "special_needs: formal clothes")
+        - laundry_availability: [washing clothes] (e.g., "laundry_availability: hotel service", "laundry_availability: none")
+        - other: [additional packing_suggestions key information] (e.g., "other: traveling with kids", "other: long-term travel")
 
-**key_specific_local_attractions_information** (for local attractions):
-- time_available: [how much time] (e.g., "time_available: 3 days", "time_available: half day")
-- mobility: [physical capability] (e.g., "mobility: wheelchair accessible", "mobility: loves walking")
-- budget_per_activity: [spending per activity] (e.g., "budget_per_activity: $50", "budget_per_activity: free activities")
-- accessibility_needs: [special access needs] (e.g., "accessibility_needs: wheelchair ramps", "accessibility_needs: audio guides")
-- other: [additional local_attractions key information])
+        **key_specific_local_attractions_information** (for local attractions):
+        - time_available: [how much time] (e.g., "time_available: 3 days", "time_available: half day")
+        - mobility: [physical capability] (e.g., "mobility: wheelchair accessible", "mobility: loves walking")
+        - budget_per_activity: [spending per activity] (e.g., "budget_per_activity: $50", "budget_per_activity: free activities")
+        - accessibility_needs: [special access needs] (e.g., "accessibility_needs: wheelchair ramps", "accessibility_needs: audio guides")
+        - other: [additional local_attractions key information])
 
-CROSS-TYPE EXTRACTION:
-IMPORTANT: Extract information for ALL relevant types, not just the primary classified type. For example:
-- If someone asks "I want to go somewhere I don't need big luggage" - this is primarily destination_recommendations, but ALSO extract "luggage_type: minimal luggage" for packing_suggestions
-- If someone asks "What to pack for hiking in mountains" - this is primarily packing_suggestions, but ALSO extract "activities: hiking" for local_attractions
+        CROSS-TYPE EXTRACTION:
+        IMPORTANT: Extract information for ALL relevant types, not just the primary classified type. For example:
+        - If someone asks "I want to go somewhere I don't need big luggage" - this is primarily destination_recommendations, but ALSO extract "luggage_type: minimal luggage" for packing_suggestions
+        - If someone asks "What to pack for hiking in mountains" - this is primarily packing_suggestions, but ALSO extract "activities: hiking" for local_attractions
 
-CRITICAL EXTRACTION RULES:
-- Format each item as "key: value" (never just the value alone)
-- ONLY extract information that is explicitly mentioned by the user
-- DO NOT extract "unknown", "not specified", or similar placeholder values
-- DO NOT make assumptions about missing information
-- If the user doesn't mention something, DO NOT include it in the arrays
-- Leave arrays completely empty if no relevant information is actually provided
-- Example: If user says "I want to go to Asia" - only extract "destination: Asia", don't add travel_style, constraints, etc.
+        CRITICAL EXTRACTION RULES:
+        - Format each item as "key: value" (never just the value alone)
+        - ONLY extract information that is explicitly mentioned by the user
+        - DO NOT extract "unknown", "not specified", or similar placeholder values
+        - DO NOT make assumptions about missing information
+        - If the user doesn't mention something, DO NOT include it in the arrays
+        - Leave arrays completely empty if no relevant information is actually provided
+        - Example: If user says "I want to go to Asia" - only extract "destination: Asia", don't add travel_style, constraints, etc.
 
-Respond with this specific JSON:
-{{
-    "type": "one of the three types",
-    "reasoning for type": "brief explanation of why this classification",
-    "external_data_needed": true/false,
-    "external_data_type": "weather/attractions/both/none",
-    "external_data_reason": "explanation of why external data is/isn't needed",
-    "key_Global_information": [
-        "key: value format strings that apply to all query types"
-    ],
-    "key_specific_destination_recommendations_information": [
-        "key: value format strings specific to destination recommendations"
-    ],
-    "key_specific_packing_suggestions_information": [
-        "key: value format strings specific to packing suggestions"
-    ],
-    "key_specific_local_attractions_information": [
-        "key: value format strings specific to local attractions"
-    ]
-}}"""
-
+        Respond with this specific JSON:
+        {{
+            "type": "one of the three types",
+            "reasoning for type": "brief explanation of why this classification",
+            "external_data_needed": true/false,
+            "external_data_type": "weather/attractions/both/none",
+            "external_data_reason": "explanation of why external data is/isn't needed",
+            "key_Global_information": [
+                "key: value format strings that apply to all query types"
+            ],
+            "key_specific_destination_recommendations_information": [
+                "key: value format strings specific to destination recommendations"
+            ],
+            "key_specific_packing_suggestions_information": [
+                "key: value format strings specific to packing suggestions"
+            ],
+            "key_specific_local_attractions_information": [
+                "key: value format strings specific to local attractions"
+            ]
+        }}"""
         try:
             response = self.gemini_client.generate_response(prompt)
             
@@ -461,7 +461,7 @@ Respond with this specific JSON:
         
         return final_result
     
-    def classify_query(self, query: str) -> Dict[str, Any]:
+    def classify_query(self, query: str, conversation_history: List[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Main classification method that orchestrates the entire process.
         Updated to handle array-based key information extraction for all types.
@@ -477,7 +477,7 @@ Respond with this specific JSON:
         # Step 1: Try Gemini classification
         gemini_result = None
         try:
-            gemini_result = self.classify_with_gemini(query)
+            gemini_result = self.classify_with_gemini(query, conversation_history)
         except Exception as e:
             logger.error(f"Gemini classification failed: {str(e)}")
         

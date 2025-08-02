@@ -362,7 +362,9 @@ Please provide helpful travel advice based on the available information."""
         
         # Step 1: Classify the query (UNCHANGED)
         try:
-            classification_result = self.classifier.classify_query(user_input)
+            # Get recent conversation history for better classification
+            recent_conversation = self.storage.get_conversation_history()[-6:] if self.storage.get_conversation_history() else []
+            classification_result = self.classifier.classify_query(user_input, recent_conversation)
         except Exception as e:
             logger.error(f"Classification failed: {str(e)}")
             classification_result = {
