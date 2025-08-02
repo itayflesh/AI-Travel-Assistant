@@ -31,15 +31,19 @@ class GlobalContextStorage:
         ]
     
     def extract_and_store_key_information(self, query_type: str, key_Global_information: List[str], 
-                                        key_specific_type_information: List[str]):
+                                        key_specific_destination_recommendations_information: List[str],
+                                        key_specific_packing_suggestions_information: List[str],
+                                        key_specific_local_attractions_information: List[str]):
         """
-        Store global and type-specific information as arrays.
+        Store global and type-specific information as arrays for ALL types.
         This is the core method that handles array-based context storage!
         
         Args:
             query_type: The type of query (destination_recommendations, packing_suggestions, local_attractions)
             key_Global_information: Array of "key: value" strings for global context
-            key_specific_type_information: Array of "key: value" strings for type-specific context
+            key_specific_destination_recommendations_information: Array for destination recommendations
+            key_specific_packing_suggestions_information: Array for packing suggestions  
+            key_specific_local_attractions_information: Array for local attractions
         """
         try:
             # Store global information (shared across all types)
@@ -47,10 +51,18 @@ class GlobalContextStorage:
                 self._update_global_context(key_Global_information)
                 logger.info(f"Updated global context with {len(key_Global_information)} items")
             
-            # Store type-specific information
-            if key_specific_type_information and len(key_specific_type_information) > 0:
-                self._update_type_specific_context(query_type, key_specific_type_information)
-                logger.info(f"Updated {query_type} context with {len(key_specific_type_information)} items")
+            # Store ALL type-specific information (regardless of primary query type)
+            if key_specific_destination_recommendations_information and len(key_specific_destination_recommendations_information) > 0:
+                self._update_type_specific_context("destination_recommendations", key_specific_destination_recommendations_information)
+                logger.info(f"Updated destination_recommendations context with {len(key_specific_destination_recommendations_information)} items")
+            
+            if key_specific_packing_suggestions_information and len(key_specific_packing_suggestions_information) > 0:
+                self._update_type_specific_context("packing_suggestions", key_specific_packing_suggestions_information)
+                logger.info(f"Updated packing_suggestions context with {len(key_specific_packing_suggestions_information)} items")
+            
+            if key_specific_local_attractions_information and len(key_specific_local_attractions_information) > 0:
+                self._update_type_specific_context("local_attractions", key_specific_local_attractions_information)
+                logger.info(f"Updated local_attractions context with {len(key_specific_local_attractions_information)} items")
                 
         except Exception as e:
             logger.error(f"Error storing key information: {str(e)}")
@@ -346,7 +358,9 @@ class GlobalContextStorage:
                 "fallback_used": query_data.get("fallback_used", False),
                 "external_data_reason": query_data.get("external_data_reason"),
                 "key_Global_information": query_data.get("key_Global_information", []),
-                "key_specific_type_information": query_data.get("key_specific_type_information", [])
+                "key_specific_destination_recommendations_information": query_data.get("key_specific_destination_recommendations_information", []),
+                "key_specific_packing_suggestions_information": query_data.get("key_specific_packing_suggestions_information", []),
+                "key_specific_local_attractions_information": query_data.get("key_specific_local_attractions_information", [])
             }
         }
         
@@ -391,39 +405,6 @@ class GlobalContextStorage:
         self.redis_client.setex(storage_key, ttl_seconds, json.dumps(cached_data))
         
         logger.info(f"Saved external data: {data_type} with {ttl_seconds}s TTL")
-    
-    def get_external_data(self, data_type: str) -> Optional[Dict[str, Any]]:
-        """Get external API data if not expired - IMPROVED"""
-        storage_key = f"{self.session_key}:{data_type}"
-        
-        try:
-            data = self.redis_client.get(storage_key)
-            if not data:
-                logger.info(f"External data not found or expired: {data_type}")
-                return None
-            
-            cached_data = json.loads(data)
-            
-            # IMPROVED: Still check timestamp as backup, but Redis TTL is primary
-            timestamp = datetime.fromisoformat(cached_data["timestamp"].replace('Z', '+00:00'))
-            expires_in = cached_data.get("expires_in", 3600)
-            
-            # Check if manually expired (backup check)
-            if (datetime.now(timezone.utc) - timestamp).total_seconds() > expires_in:
-                logger.info(f"External data manually expired: {data_type}")
-                # Clean up the expired key
-                self.redis_client.delete(storage_key)
-                return None
-            
-            # IMPROVED: Log TTL info for debugging
-            ttl_remaining = self.redis_client.ttl(storage_key)
-            logger.info(f"Retrieved external data: {data_type} (TTL remaining: {ttl_remaining}s)")
-            
-            return cached_data["data"]
-            
-        except Exception as e:
-            logger.error(f"Error getting external data {data_type}: {str(e)}")
-            return None
     
     def get_external_data(self, data_type: str) -> Optional[Dict[str, Any]]:
         """Get external API data if not expired"""

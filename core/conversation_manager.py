@@ -136,17 +136,20 @@ Please provide helpful travel advice based on the available information."""
                         logger.info(f"SUCCESS: Found destination in NEW classification: {destination}")
                         return destination
             
-            # Check type-specific information from NEW classification
-            type_info = classification_result.get("key_specific_type_information", [])
-            logger.info(f"NEW Type-specific info: {type_info}")
-            
-            for info in type_info:
-                logger.info(f"Processing NEW type-specific item: '{info}'")
-                if info.lower().startswith("destination:"):
-                    destination = info.split(":", 1)[1].strip()
-                    if destination:
-                        logger.info(f"SUCCESS: Found destination in NEW type-specific context: {destination}")
-                        return destination
+            # Check type-specific information from NEW classification - ALL TYPES NOW
+            for type_key in ["key_specific_destination_recommendations_information", 
+                           "key_specific_packing_suggestions_information", 
+                           "key_specific_local_attractions_information"]:
+                type_info = classification_result.get(type_key, [])
+                logger.info(f"NEW {type_key}: {type_info}")
+                
+                for info in type_info:
+                    logger.info(f"Processing NEW type-specific item: '{info}'")
+                    if info.lower().startswith("destination:"):
+                        destination = info.split(":", 1)[1].strip()
+                        if destination:
+                            logger.info(f"SUCCESS: Found destination in NEW type-specific context: {destination}")
+                            return destination
             
             # STEP 2: Check ACCUMULATED global context (SMART FALLBACK!)
             logger.info("NEW classification has no destination - checking ACCUMULATED global context...")
@@ -319,7 +322,9 @@ Please provide helpful travel advice based on the available information."""
                 "external_data_needed": False,
                 "external_data_type": "none",
                 "key_Global_information": [],
-                "key_specific_type_information": [],
+                "key_specific_destination_recommendations_information": [],
+                "key_specific_packing_suggestions_information": [],
+                "key_specific_local_attractions_information": [],
                 "confidence_score": 0.1,
                 "primary_source": "fallback",
                 "reasoning": f"Classification error - using fallback: {str(e)}",
@@ -333,14 +338,16 @@ Please provide helpful travel advice based on the available information."""
             classification_result
         )
         
-        # Step 3: Save to context storage (MOVED UP)
+        # Step 3: Save to context storage (UPDATED TO PASS ALL 3 ARRAYS)
         if classification_result:
             try:
-                # Extract and store using array-based method
+                # Extract and store using array-based method - NOW WITH ALL 3 ARRAYS
                 self.storage.extract_and_store_key_information(
                     classification_result["type"], 
                     classification_result.get("key_Global_information", []),
-                    classification_result.get("key_specific_type_information", [])
+                    classification_result.get("key_specific_destination_recommendations_information", []),
+                    classification_result.get("key_specific_packing_suggestions_information", []),
+                    classification_result.get("key_specific_local_attractions_information", [])
                 )
                 
                 # Save user query with full classification data
