@@ -12,6 +12,7 @@ from handlers.attractions_handler import AttractionsHandler
 
 # Import external APIs
 from external_apis.attraction_api import get_attractions_for_destination
+from external_apis.weather_api import get_weather_for_destination
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -188,7 +189,7 @@ Please provide helpful travel advice based on the available information."""
         """
         Get relevant external data based on query type and classification.
         
-        UPDATED: Now includes attractions API integration with Redis caching.
+        UPDATED: Now includes both weather and attractions API integration with Redis caching.
         
         This ensures handlers receive the right external data for their specialized prompts.
         """
@@ -201,14 +202,35 @@ Please provide helpful travel advice based on the available information."""
             
             external_data_type = classification_result.get("external_data_type", "none")
             
-            # Get weather data for packing suggestions (EXISTING)
+            # Get weather data for packing suggestions (NEW!)
             if query_type == "packing_suggestions" and external_data_type in ["weather", "both"]:
+                # First check Redis cache
                 weather_data = self.storage.get_external_data("weather_external_data")
+                
                 if weather_data:
                     external_data["weather"] = weather_data
-                    logger.info("Added weather data for packing handler")
+                    logger.info("Using cached weather data for packing handler")
+                else:
+                    # Cache miss - fetch from API and store in Redis
+                    destination = self._extract_destination_from_context(classification_result)
+                    
+                    if destination:
+                        logger.info(f"Fetching fresh weather data for: {destination}")
+                        weather_result = get_weather_for_destination(destination)
+                        
+                        if weather_result.get("success"):
+                            # Store in Redis with 1-hour TTL
+                            self.storage.save_external_data("weather_external_data", weather_result)
+                            external_data["weather"] = weather_result
+                            logger.info(f"Fetched and cached weather for {destination}: {weather_result.get('current_weather', {}).get('temperature', 'N/A')}°C")
+                        else:
+                            # API failed - log error but don't crash
+                            logger.error(f"Weather API failed: {weather_result.get('error')}")
+                            # Don't add to external_data, handler will work without it
+                    else:
+                        logger.warning("No destination found for weather query - skipping API call")
             
-            # Get attractions data for local attractions (NEW!)
+            # Get attractions data for local attractions (EXISTING)
             elif query_type == "local_attractions" and external_data_type in ["attractions", "both"]:
                 # First check Redis cache
                 attractions_data = self.storage.get_external_data("attractions_external_data")
@@ -236,13 +258,22 @@ Please provide helpful travel advice based on the available information."""
                     else:
                         logger.warning("No destination found for attractions query - skipping API call")
             
-            # Handle "both" data type (weather + attractions)
+            # Handle "both" data type (weather + attractions) (NEW!)
             elif external_data_type == "both":
                 # Get weather data
                 weather_data = self.storage.get_external_data("weather_external_data")
                 if weather_data:
                     external_data["weather"] = weather_data
-                    logger.info("Added weather data for combined handler")
+                    logger.info("Added cached weather data for combined handler")
+                else:
+                    # Try to fetch weather if destination available
+                    destination = self._extract_destination_from_context(classification_result)
+                    if destination:
+                        weather_result = get_weather_for_destination(destination)
+                        if weather_result.get("success"):
+                            self.storage.save_external_data("weather_external_data", weather_result)
+                            external_data["weather"] = weather_result
+                            logger.info("Fetched and cached weather for combined handler")
                 
                 # Get attractions data
                 attractions_data = self.storage.get_external_data("attractions_external_data")
@@ -291,7 +322,7 @@ Please provide helpful travel advice based on the available information."""
 
     def process_user_message(self, user_input):
         """
-        UPDATED: Main processing logic now uses specialized handlers + attractions API.
+        UPDATED: Main processing logic now uses specialized handlers + weather + attractions APIs.
         
         This replaces the old generic prompt building with advanced handler routing.
         """
@@ -317,7 +348,7 @@ Please provide helpful travel advice based on the available information."""
                 "error": str(e)
             }
         
-        # Step 2: Get external data if needed (UPDATED WITH ATTRACTIONS)
+        # Step 2: Get external data if needed (UPDATED WITH WEATHER + ATTRACTIONS)
         external_data = self.get_external_data_for_query_type(
             classification_result["type"], 
             classification_result
@@ -360,14 +391,14 @@ Please provide helpful travel advice based on the available information."""
             type_specific_context = []
             recent_conversation = []
         
-        # Step 5: Route to specialized handler (ENHANCED WITH ATTRACTIONS DATA)
+        # Step 5: Route to specialized handler (ENHANCED WITH WEATHER + ATTRACTIONS DATA)
         try:
             final_prompt = self.route_to_handler(
                 query_type=classification_result["type"],
                 user_query=user_input,
                 global_context=global_context,
                 type_specific_context=type_specific_context,
-                external_data=external_data,  # Now includes attractions data when available
+                external_data=external_data,  # Now includes both weather and attractions data when available
                 recent_conversation=recent_conversation
             )
             
