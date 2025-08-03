@@ -537,7 +537,8 @@ class DestinationHandler:
                 "1. Analyze what critical information is missing for destination recommendations",
                 "2. Identify the 2-3 most important questions to ask",
                 "3. Provide a brief, encouraging response that gathers essential details",
-                "4. Focus on destination preferences, budget range, and travel style"
+                "4. Focus on destination preferences, budget range, and travel style", 
+                "5. Maintain an answer structure that is easy to read and user-friendly."
             ])
         
         elif response_strategy["type"] == "hybrid":
@@ -545,7 +546,9 @@ class DestinationHandler:
                 "1. Assess what information is available and what's missing",
                 "2. Provide helpful general recommendations based on available info",
                 "3. Ask 1-2 specific questions to fill important gaps",
-                "4. Balance being helpful now while gathering more details"
+                "4. Balance being helpful now while gathering more details",
+                "5. Maintain an answer structure that is easy to read and user-friendly."
+
             ])
         
         elif response_strategy["type"] == "recommendation_focused":
@@ -554,7 +557,8 @@ class DestinationHandler:
                 "2. Consider budget, duration, interests, and constraints holistically",
                 "3. Provide 2-4 specific destination recommendations with clear reasoning",
                 "4. Explain why each destination matches their stated preferences",
-                "5. Include practical considerations (budget fit, logistics, best time to visit)"
+                "5. Include practical considerations (budget fit, logistics, best time to visit)",
+                "6. Maintain an answer structure that is easy to read and user-friendly."
             ])
         
         else:  # detailed_planning
@@ -563,7 +567,8 @@ class DestinationHandler:
                 "2. Provide detailed destination recommendations with specific rationale",
                 "3. Include budget breakdown, best travel times, and logistical considerations",
                 "4. Suggest specific neighborhoods, must-see highlights, and insider tips",
-                "5. Address any special requirements or accessibility needs mentioned"
+                "5. Address any special requirements or accessibility needs mentioned",
+                "6. Maintain an answer structure that is easy to read and user-friendly."
             ])
         
         prompt_parts.append("")
@@ -571,32 +576,37 @@ class DestinationHandler:
         # Response guidelines tailored to each strategy
         prompt_parts.append("Response guidelines:")
         
+        
         strategy_guidelines = {
             "question_focused": [
-                "• Keep response concise but encouraging (2-3 paragraphs max)",
+                "• Keep response concise but encouraging (2 paragraphs max)",
                 "• Ask no more than 3 specific, actionable questions", 
                 "• Show enthusiasm for helping plan their trip",
-                "• Avoid overwhelming with too many options"
+                "• Avoid overwhelming with too many options",
+                "• USE this structure: Brief intro paragraph + Recommendations section (based on what you have) + Numbered questions (1,2,3)"
             ],
             "hybrid": [
                 "• Provide 1-2 general recommendations while asking for clarification",
                 "• Balance being immediately helpful with gathering more info",
                 "• Keep response moderate length (3-4 paragraphs)",
-                "• Show expertise while remaining conversational"
+                "• Show expertise while remaining conversational",
+                "• USE this structure: Introduction + Recommendations section + Questions section"
             ],
             "recommendation_focused": [
                 "• Provide 2-4 specific destination recommendations with clear reasoning",
                 "• Explain why each destination fits their budget, interests, and constraints",
                 "• Include practical details (best time to visit, approximate costs)",
                 "• Use confident, expert tone while remaining personable",
-                "• Aim for comprehensive but digestible response (4-5 paragraphs)"
+                "• Aim for comprehensive but digestible response (3-4 paragraphs)",
+                "• USE this structure: Introduction + Destination 1 + Destination 2 + Destination 3 + Summary"
             ],
             "detailed_planning": [
                 "• Provide comprehensive destination analysis with detailed insights",
                 "• Include specific neighborhoods, activities, and insider recommendations",
                 "• Address all mentioned preferences and constraints thoroughly",
                 "• Provide actionable next steps for trip planning",
-                "• Use extensive expertise while maintaining conversational tone"
+                "• Use extensive expertise while maintaining conversational tone",
+                "• USE this structure: Overview + Destinations (with sub-sections) + Practical Tips + Next Steps"
             ]
         }
         
@@ -609,11 +619,10 @@ class DestinationHandler:
         if external_relevance["use_weather"] or external_relevance["use_attractions"]:
             prompt_parts.append("External data usage :")
             if external_relevance["use_weather"]:
-                prompt_parts.append("• USE the weather data provided - classifier determined it's relevant")
+                prompt_parts.append("• USE the weather data provided ONLY if user need current / 5 coming days forecast")
                 prompt_parts.append("• Integrate weather insights naturally into recommendations")
             if external_relevance["use_attractions"]:
-                prompt_parts.append("• USE the attractions data provided - classifier determined it's relevant")
-                prompt_parts.append("• Reference specific attractions when recommending destinations")
+                prompt_parts.append("• USE the attractions data provided ONLY if user ask about attractions on the destination you have")
         else:
             prompt_parts.append("External data usage:")
             prompt_parts.append("• Classifier determined no external data needed - rely on your extensive knowledge")
@@ -623,12 +632,20 @@ class DestinationHandler:
         
         # Quality and tone guidelines
         prompt_parts.extend([
+            "FORMATTING REQUIREMENTS:",
+            "• Use markdown formatting with **bold headers**",
+            "• Use bullet points (•) for lists and features", 
+            "• Use numbered lists (1, 2, 3) for questions and steps",
+            "• Keep paragraphs to 2-3 sentences maximum",
+            "• Use emojis sparingly but effectively (🏆, ✈️, 💰)",
+            "• Structure each destination as a clear section",
+            "",
             "Quality standards:",
             "• Be conversational, enthusiastic, and genuinely helpful",
             "• Use specific examples and concrete details when possible",
             "• Demonstrate deep travel knowledge while remaining accessible",
             "• Match response length to information available and strategy type",
-            "• Use formatting (bullets, brief headers) for easy reading when appropriate",
+            "• STRICTLY follow the required response format above",
             "",
             "Generate your destination recommendation response:"
         ])
@@ -663,5 +680,6 @@ INSTRUCTIONS:
 3. If missing critical details, ask 2-3 targeted questions
 4. Be conversational, helpful, and demonstrate travel expertise
 5. Keep response length appropriate to available information
+6. Keep your answer in clear structure!
 
 Generate your destination recommendation response:"""

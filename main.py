@@ -115,14 +115,7 @@ st.markdown("""
         box-sizing: border-box;
     }
     
-    .external-data-info {
-        font-size: 0.75em;
-        color: #6c757d;
-        font-style: italic;
-        margin-top: 4px;
-        margin-left: 16px;
-        opacity: 0.8;
-    }
+    /* REMOVED: .external-data-info CSS class */
     
     /* Sidebar styling */
     .context-item {
@@ -239,24 +232,10 @@ def display_context_sidebar(storage):
     except Exception as e:
         st.error(f"Error loading context: {str(e)}")
 
-def get_external_data_info(classification_result):
-    """Get simple external data usage information."""
-    if not classification_result or not classification_result.get("external_data_needed", False):
-        return None
-    
-    external_data_type = classification_result.get("external_data_type", "none")
-    
-    if external_data_type == "weather":
-        return "Used current weather data"
-    elif external_data_type == "attractions":
-        return "Used current attractions data"
-    elif external_data_type == "both":
-        return "Used weather and attractions data"
-    
-    return None
+# REMOVED: get_external_data_info function entirely
 
-def display_chat_message(message, is_user=True, external_info=None):
-    """Display a single chat message with proper styling."""
+def display_chat_message(message, is_user=True):
+    """Display a single chat message with proper styling - REMOVED external_info parameter."""
     if is_user:
         # User messages on the right
         st.markdown(f'''
@@ -265,13 +244,11 @@ def display_chat_message(message, is_user=True, external_info=None):
         </div>
         ''', unsafe_allow_html=True)
     else:
-        # Assistant messages on the left
-        external_html = f'<div class="external-data-info">{external_info}</div>' if external_info else ''
+        # Assistant messages on the left - REMOVED external_html
         st.markdown(f'''
         <div class="message-container assistant-container">
             <div class="assistant-message">
                 {message}
-                {external_html}
             </div>
         </div>
         ''', unsafe_allow_html=True)
@@ -314,12 +291,8 @@ def main():
                     display_chat_message(message["user_query"], is_user=True)
                 
                 elif "assistant_answer" in message:
-                    # Check if external data was used for this response
-                    external_info = None
-                    if "classification" in message:
-                        external_info = get_external_data_info(message.get("classification"))
-                    
-                    display_chat_message(message["assistant_answer"], is_user=False, external_info=external_info)
+                    # REMOVED: external data info logic - just display the message
+                    display_chat_message(message["assistant_answer"], is_user=False)
             
         except Exception as e:
             st.error(f"Error loading conversation: {str(e)}")
