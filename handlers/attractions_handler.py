@@ -370,12 +370,12 @@ class AttractionsHandler:
             
             # Pick strategy based on how much we know
             if quality == "minimal" or completeness < 0.3:
-                strategy["type"] = "question_focused"
-                strategy["approach"] = "Ask 2-3 targeted questions to gather essential information"
+                strategy["type"] = "hybrid"
+                strategy["approach"] = "Always provide 2-3 general attraction recommendations and ask clarifying questions, even with minimal info."
                 strategy["length_target"] = "concise"
-                strategy["questioning_strategy"] = "Focus on destination, available time, and interests"
-                strategy["recommendation_depth"] = "none"
-                
+                strategy["questioning_strategy"] = "Ask 2-3 targeted questions to gather essential information, but always give recommendations first."
+                strategy["recommendation_depth"] = "general"
+
             elif quality == "partial" or completeness < 0.6:
                 if has_attractions_data:
                     strategy["type"] = "hybrid_with_data"

@@ -352,11 +352,11 @@ class PackingHandler:
             
             # Pick strategy based on how much we know
             if quality == "minimal" or completeness < 0.3:
-                strategy["type"] = "question_focused"
-                strategy["approach"] = "Ask 2-3 targeted questions to gather essential packing information"
+                strategy["type"] = "hybrid"
+                strategy["approach"] = "Provide 2-3 general packing recommendations and ask clarifying questions"
                 strategy["length_target"] = "concise"
-                strategy["questioning_strategy"] = "Focus on destination, activities, and luggage type"
-                strategy["recommendation_depth"] = "none"
+                strategy["questioning_strategy"] = "Ask 2-3 targeted questions to gather essential packing information"
+                strategy["recommendation_depth"] = "general"
                 
             elif quality == "partial" or completeness < 0.6:
                 if has_weather_data:

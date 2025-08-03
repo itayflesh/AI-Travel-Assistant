@@ -296,13 +296,14 @@ def main():
     st.markdown("---")
 
     # Chat input
-    st.markdown("### New Query")
+    # st.markdown("### New Query")
     user_input = st.chat_input("Type your travel question here...")
     
     if user_input:
         # Process the message
         with st.spinner("Thinking..."):
             result = conversation_manager.process_user_message(user_input)
+        
         
         # Refresh to show new messages
         st.rerun()

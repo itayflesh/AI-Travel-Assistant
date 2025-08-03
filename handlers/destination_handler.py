@@ -314,8 +314,8 @@ class DestinationHandler:
                                    recent_conversation: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Pick the best response strategy based on what we know and what we need.
-        
-        - If you know almost nothing: ask questions
+
+        - If you know almost nothing: provide general recommendations
         - If you know some things: give some suggestions and ask for clarification
         - If you know enough: give solid recommendations
         - If you know everything: give detailed planning advice
@@ -327,56 +327,56 @@ class DestinationHandler:
             "questioning_strategy": "",
             "recommendation_depth": "minimal"
         }
-        
+
         try:
             quality = info_analysis["information_quality"]
             completeness = info_analysis["completeness_score"]
             has_critical_gaps = len(info_analysis["critical_gaps"]) > 0
-            
+
             # Pick strategy based on how much we know
             if quality == "minimal" or completeness < 0.3:
-                strategy["type"] = "question_focused"
-                strategy["approach"] = "Ask 2-3 targeted questions to gather essential information"
+                strategy["type"] = "hybrid"
+                strategy["approach"] = "Always provide 2-3 general destination recommendations and ask clarifying questions, even with minimal info."
                 strategy["length_target"] = "concise"
-                strategy["questioning_strategy"] = "Focus on destination preferences, budget, and interests"
-                strategy["recommendation_depth"] = "none"
-                
+                strategy["questioning_strategy"] = "Ask 2-3 targeted questions to gather essential information, but always give recommendations first."
+                strategy["recommendation_depth"] = "general"
+
             elif quality == "partial" or completeness < 0.6:
                 strategy["type"] = "hybrid"
                 strategy["approach"] = "Provide general recommendations while gathering missing details"
                 strategy["length_target"] = "moderate"
                 strategy["questioning_strategy"] = "Ask for 1-2 specific details while giving helpful suggestions"
                 strategy["recommendation_depth"] = "general"
-                
+
             elif quality == "sufficient" or completeness < 0.8:
                 strategy["type"] = "recommendation_focused"
                 strategy["approach"] = "Provide solid destination recommendations with clear reasoning"
                 strategy["length_target"] = "comprehensive"
                 strategy["questioning_strategy"] = "Optional clarification questions only"
                 strategy["recommendation_depth"] = "detailed"
-                
+
             else:  # complete
                 strategy["type"] = "detailed_planning"
                 strategy["approach"] = "Provide comprehensive destination recommendations with detailed insights"
                 strategy["length_target"] = "comprehensive"
                 strategy["questioning_strategy"] = "No questions needed"
                 strategy["recommendation_depth"] = "comprehensive"
-            
+
             # Avoid endless question loops in long conversations
             conversation_length = len(recent_conversation)
             if conversation_length > 4:  # Long conversation - be more decisive
                 if strategy["type"] == "question_focused":
                     strategy["type"] = "hybrid"
                     strategy["approach"] = "Move conversation forward with recommendations and minimal questions"
-            
+
             logger.info(f"Selected strategy: {strategy['type']} for {quality} quality information")
-            
+
         except Exception as e:
             logger.error(f"Error determining response strategy: {str(e)}")
             # Safe fallback
-            strategy["type"] = "hybrid"
-            strategy["approach"] = "Provide helpful response with clarifying questions"
-        
+            strategy["type"] = "recommendation_focused"
+            strategy["approach"] = "Provide helpful response with minimal clarifying questions"
+
         return strategy
     
     def _build_conversation_context(self, recent_conversation: List[Dict[str, Any]]) -> str:
