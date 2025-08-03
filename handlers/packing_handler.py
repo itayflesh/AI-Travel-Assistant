@@ -12,16 +12,6 @@ class PackingHandler:
     """
     Smart prompt engineering for packing suggestions.
     
-    This is probably the trickiest handler because packing advice is so context-dependent.
-    The difference between "pack shorts" and "pack a winter coat" can literally make or
-    break someone's trip.
-    
-    Key insights that make this work:
-    - Only use real weather data for trips happening soon (within 5 days)
-    - For future trips, rely on seasonal knowledge instead of current weather
-    - Extract activity clues from what people say ("hiking" = boots, "business" = formal clothes)
-    - Adapt questioning strategy based on how much we already know
-    - Different response depth depending on info completeness
     """
     
     def __init__(self):
@@ -41,14 +31,12 @@ class PackingHandler:
             "special_needs": ["special_needs", "accessibility_needs", "laundry_availability"]
         }
         
-        # Only use real weather data for trips within 5 days
-        self.weather_relevance_days = 5
-        
         logger.info("PackingHandler ready to build smart packing prompts")
     
     def build_final_prompt(self, user_query: str, global_context: List[str], 
                           type_specific_context: List[str], external_data: Dict[str, Any],
-                          recent_conversation: List[Dict[str, Any]]) -> str:
+                          recent_conversation: List[Dict[str, Any]], 
+                          classification_result: Dict[str, Any]) -> str:
         """
         Build a smart prompt for packing recommendations.
         
@@ -59,9 +47,9 @@ class PackingHandler:
                 user_query, global_context, type_specific_context
             )
             
-            # This is the key insight - only use weather data when it's actually relevant
+            # Trust the classifier's decision about external data completely
             weather_relevance = self._assess_weather_data_relevance(
-                external_data, global_context, user_query, info_analysis
+                external_data, classification_result
             )
             
             # Pick the best response strategy based on what we know
@@ -92,7 +80,8 @@ class PackingHandler:
                 f"Built packing prompt: {len(final_prompt)} chars, "
                 f"strategy={response_strategy['type']}, "
                 f"completeness={info_analysis['completeness_score']:.2f}, "
-                f"weather_used={weather_relevance['use_weather']}"
+                f"weather_used={weather_relevance['use_weather']} "
+                f"(classifier-driven)"
             )
             
             return final_prompt
@@ -275,12 +264,10 @@ class PackingHandler:
         return info
     
     def _assess_weather_data_relevance(self, external_data: Dict[str, Any], 
-                                     global_context: List[str], user_query: str,
-                                     info_analysis: Dict[str, Any]) -> Dict[str, Any]:
+                                      classification_result: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Only use real weather data for near-term trips (within 5 days). For future trips,
-        current weather is misleading.
-
+        Trust the classifier's decision about external data completely.
+        Only verify that the data actually exists and has content.
         """
         relevance = {
             "weather_relevant": False,
@@ -291,104 +278,52 @@ class PackingHandler:
         }
         
         try:
-            # Do we even have weather data?
-            has_weather = "weather" in external_data and external_data["weather"].get("success")
+            # Get classifier's decisions
+            external_data_needed = classification_result.get("external_data_needed", False)
+            external_data_type = classification_result.get("external_data_type", "none")
             
-            if not has_weather:
-                relevance["weather_reason"] = "No external weather data available"
+            logger.info(f"Classifier decision: external_data_needed={external_data_needed}, type={external_data_type}")
+            
+            if not external_data_needed:
+                relevance["weather_reason"] = "Classifier determined no external data needed"
+                logger.info("Trusting classifier: no external data needed")
                 return relevance
             
-            # This is the critical decision - when is weather data actually useful?
-            available_info = info_analysis.get("available_info", {})
-            
-            travel_date_soon = self._is_trip_within_weather_relevance_window(
-                available_info, user_query, global_context
-            )
-            
-            if travel_date_soon:
-                relevance["temporal_relevance"] = "near_term"
-                relevance["weather_relevant"] = True
-                relevance["use_weather"] = True
-                relevance["weather_reason"] = "Trip is within 5 days - current weather data is relevant"
+            # Classifier says we need external data - check if it's weather data
+            if external_data_type in ["weather", "both"]:
+                has_weather = "weather" in external_data and external_data["weather"].get("success")
                 
+                if has_weather:
+                    # Verify data quality
+                    weather_data = external_data["weather"]
+                    current_temp = weather_data.get('current_weather', {}).get('temperature', 'N/A')
+                    forecast_entries = len(weather_data.get('forecast', []))
+                    
+                    if current_temp != 'N/A' and forecast_entries > 0:
+                        relevance["weather_relevant"] = True
+                        relevance["use_weather"] = True
+                        relevance["temporal_relevance"] = "classifier_determined"
+                        relevance["data_freshness"] = "current"
+                        relevance["weather_reason"] = f"Classifier requested weather data - available and valid"
+                        logger.info("Using weather data as requested by classifier")
+                    else:
+                        relevance["weather_reason"] = f"Classifier requested weather data but quality is limited"
+                        logger.warning("Weather data requested but quality is limited")
+                else:
+                    relevance["weather_reason"] = f"Classifier requested weather data but none available"
+                    logger.warning("Weather data requested but not available")
             else:
-                # Check if they're specifically asking about current weather
-                weather_query_indicators = [
-                    "current weather" in user_query.lower(),
-                    "today" in user_query.lower(),
-                    "now" in user_query.lower(),
-                    "right now" in user_query.lower()
-                ]
-                
-                if any(weather_query_indicators):
-                    relevance["temporal_relevance"] = "current_query"
-                    relevance["weather_relevant"] = True
-                    relevance["use_weather"] = True
-                    relevance["weather_reason"] = "User explicitly asking about current weather"
-                else:
-                    relevance["temporal_relevance"] = "future_trip"
-                    relevance["weather_reason"] = "Trip appears to be in future - use seasonal knowledge instead of current weather"
+                relevance["weather_reason"] = f"Classifier requested {external_data_type} data, not weather"
+                logger.info("Classifier didn't request weather data")
             
-            # Check data quality if we're planning to use it
-            if relevance["use_weather"] and has_weather:
-                weather_data = external_data["weather"]
-                current_temp = weather_data.get('current_weather', {}).get('temperature', 'N/A')
-                forecast_entries = len(weather_data.get('forecast', []))
-                
-                if current_temp != 'N/A' and forecast_entries > 0:
-                    relevance["data_freshness"] = "current"
-                else:
-                    relevance["data_freshness"] = "limited"
-                    relevance["weather_reason"] += " (limited data available)"
-            
-            logger.info(f"Weather data relevance: use={relevance['use_weather']}, reason={relevance['weather_reason']}")
+            # Log final decision
+            logger.info(f"Final weather data usage: use_weather={relevance['use_weather']}")
             
         except Exception as e:
             logger.error(f"Error assessing weather data relevance: {str(e)}")
             relevance["weather_reason"] = f"Error in relevance assessment: {str(e)}"
         
         return relevance
-    
-    def _is_trip_within_weather_relevance_window(self, available_info: Dict[str, str], 
-                                               user_query: str, global_context: List[str]) -> bool:
-        """
-        Determine if their trip is happening soon enough that current weather matters.
-        
-        Only trips within 5 days should use real weather data for packing accuracy.
-        """
-        try:
-            # Check for immediate travel clues in what they just said
-            immediate_indicators = [
-                "tomorrow", "today", "this week", "coming week", "next few days",
-                "leaving tomorrow", "departing today", "traveling tomorrow"
-            ]
-            
-            if any(indicator in user_query.lower() for indicator in immediate_indicators):
-                logger.info("Trip detected as immediate based on query language")
-                return True
-            
-            # Check previous conversation for date info
-            for item in global_context:
-                if "travel_dates:" in item.lower():
-                    date_str = item.split(":", 1)[1].strip().lower()
-                    if any(indicator in date_str for indicator in immediate_indicators):
-                        logger.info("Trip detected as immediate based on context dates")
-                        return True
-            
-            # Check extracted info for date clues
-            if "travel_dates" in available_info:
-                date_str = available_info["travel_dates"].lower()
-                if any(indicator in date_str for indicator in immediate_indicators):
-                    logger.info("Trip detected as immediate based on available info")
-                    return True
-            
-            # Default: assume future trip (safer for packing accuracy)
-            logger.info("Trip assumed to be future - will use seasonal knowledge")
-            return False
-            
-        except Exception as e:
-            logger.error(f"Error in temporal analysis: {str(e)}")
-            return False  # Safe default: don't use current weather for uncertain dates
     
     def _determine_response_strategy(self, info_analysis: Dict[str, Any], 
                                    weather_relevance: Dict[str, Any],
@@ -593,7 +528,7 @@ class PackingHandler:
                 prompt_parts.append(f"• {item}")
             prompt_parts.append("")
         
-        # Include weather data only if it's actually useful
+        # Include weather data only if the classifier requested it
         if weather_relevance["use_weather"] and "weather" in external_data:
             weather = external_data["weather"]
             prompt_parts.append("CURRENT WEATHER DATA:")
@@ -708,22 +643,17 @@ class PackingHandler:
         
         prompt_parts.append("")
         
-        # Instructions on using weather data
+        # Instructions on using weather data - now purely classifier-driven
         if weather_relevance["use_weather"]:
             prompt_parts.append("Weather data usage:")
-            prompt_parts.append("• USE the current weather data provided - it's temporally relevant for this trip")
+            prompt_parts.append("• USE the weather data provided - classifier determined it's relevant")
             prompt_parts.append("• Make specific clothing recommendations based on actual temperatures and conditions")
             prompt_parts.append("• Consider the 5-day forecast for layering and backup clothing needs")
             prompt_parts.append("• Integrate weather insights naturally into packing categories")
         else:
             prompt_parts.append("Weather data usage:")
-            if weather_relevance["temporal_relevance"] == "future_trip":
-                prompt_parts.append("• Do NOT use current weather data - this appears to be a future trip")
-                prompt_parts.append("• Instead, rely on your seasonal/climatic knowledge for the destination")
-                prompt_parts.append("• Use general seasonal patterns rather than current conditions")
-            else:
-                prompt_parts.append("• No current weather data available - rely on your extensive knowledge")
-                prompt_parts.append("• Use general climatic knowledge for the destination and season")
+            prompt_parts.append("• Classifier determined no weather data needed - rely on your extensive knowledge")
+            prompt_parts.append("• Use general climatic knowledge for the destination and season")
         
         prompt_parts.append("")
         
@@ -749,8 +679,8 @@ class PackingHandler:
         # Log what we built for debugging
         logger.info(f"Built packing prompt: strategy={response_strategy['type']}, "
                    f"info_quality={info_analysis['information_quality']}, "
-                   f"weather_used={weather_relevance['use_weather']}, "
-                   f"temporal_relevance={weather_relevance['temporal_relevance']}")
+                   f"weather_used={weather_relevance['use_weather']} "
+                   f"(classifier-driven)")
         
         return final_prompt
     

@@ -93,25 +93,15 @@ class ConversationManager:
                             handler_specific_context.append(item)
             
             # Let the handler build the specialized prompt
-            # FOR BOTH DESTINATION AND ATTRACTIONS HANDLERS: Pass classification_result
-            if query_type in ["destination_recommendations", "local_attractions"]:
-                engineered_prompt = handler.build_final_prompt(
-                    user_query=user_query,
-                    global_context=global_context,
-                    type_specific_context=handler_specific_context,
-                    external_data=external_data,
-                    recent_conversation=recent_conversation,
-                    classification_result=classification_result  # Pass classification result
-                )
-            else:
-                # Other handlers (packing) use the original signature
-                engineered_prompt = handler.build_final_prompt(
-                    user_query=user_query,
-                    global_context=global_context,
-                    type_specific_context=handler_specific_context,
-                    external_data=external_data,
-                    recent_conversation=recent_conversation
-                )
+            # FOR ALL HANDLERS: Pass classification_result
+            engineered_prompt = handler.build_final_prompt(
+                user_query=user_query,
+                global_context=global_context,
+                type_specific_context=handler_specific_context,
+                external_data=external_data,
+                recent_conversation=recent_conversation,
+                classification_result=classification_result
+            )
             
             logger.info(f"Successfully routed to {query_type} handler, prompt length: {len(engineered_prompt)} chars")
             return engineered_prompt

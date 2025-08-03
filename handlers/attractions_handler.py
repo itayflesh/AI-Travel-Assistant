@@ -572,7 +572,7 @@ class AttractionsHandler:
         
         if external_relevance["use_attractions"] and "attractions" in external_data:
             attractions = external_data["attractions"]
-            prompt_parts.append("CURRENT ATTRACTIONS DATA: (the user DOES NOT see this)")
+            prompt_parts.append("CURRENT ATTRACTIONS DATA: (not seen by user - Don't use reference to here in response)")
             prompt_parts.append(f"• Destination: {attractions.get('destination', 'Unknown')}")
             
             # Include actual attractions data if available
