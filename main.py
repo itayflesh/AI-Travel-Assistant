@@ -244,7 +244,7 @@ def display_chat_message(message, is_user=True):
         </div>
         ''', unsafe_allow_html=True)
     else:
-        # Assistant messages on the left - REMOVED external_html
+        # Assistant messages on the left - REMOVED external data info logic
         st.markdown(f'''
         <div class="message-container assistant-container">
             <div class="assistant-message">
@@ -255,10 +255,6 @@ def display_chat_message(message, is_user=True):
 
 def main():
     """Main application."""
-    
-    # # Clean header
-    # st.title("💬 Travel Chat")
-    # st.markdown("---")
     
     # Initialize components
     storage, gemini, classifier, conversation_manager = init_components()
@@ -272,11 +268,9 @@ def main():
         display_context_sidebar(storage)
     
     # Main chat area
-    # st.markdown("### Chat")
-    
-    # Create chat container
+    st.markdown("### Chat History")
     chat_container = st.container()
-    
+
     with chat_container:
         st.markdown('<div class="chat-container">', unsafe_allow_html=True)
         
@@ -291,15 +285,18 @@ def main():
                     display_chat_message(message["user_query"], is_user=True)
                 
                 elif "assistant_answer" in message:
-                    # REMOVED: external data info logic - just display the message
                     display_chat_message(message["assistant_answer"], is_user=False)
             
         except Exception as e:
             st.error(f"Error loading conversation: {str(e)}")
         
         st.markdown('</div>', unsafe_allow_html=True)
-    
+
+    # Separate chat history and input with a horizontal line
+    st.markdown("---")
+
     # Chat input
+    st.markdown("### New Query")
     user_input = st.chat_input("Type your travel question here...")
     
     if user_input:
