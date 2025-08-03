@@ -647,7 +647,7 @@ class DestinationHandler:
             "• Match response length to information available and strategy type",
             "• STRICTLY follow the required response format above",
             "",
-            "Generate your destination recommendation response and keep on readable format:"
+            "Generate your destination recommendation response and most importantly keep on readable format and keep on flow:"
         ])
         
         # Put it all together

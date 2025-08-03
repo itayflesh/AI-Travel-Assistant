@@ -672,7 +672,7 @@ class PackingHandler:
             "• Use emojis and bullet points for easy scanning",
             "• Be encouraging and build confidence in their packing decisions",
             "",
-            "Generate your packing recommendation response and keep on readable format:"
+            "Generate your packing recommendation response and most importantly keep on readable format and keep on flow:"
         ])
         
         # Put it all together

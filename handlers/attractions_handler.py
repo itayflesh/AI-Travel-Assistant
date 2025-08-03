@@ -715,7 +715,7 @@ class AttractionsHandler:
             "• Use formatting (bullets, emojis) for easy reading when appropriate",
             "• Prioritize attractions based on stated interests and time available",
             "",
-            "Generate your attractions recommendation response and keep on readable format:"
+            "Generate your attractions recommendation response and most importantly keep on readable format and keep on flow:"
         ])
         
         # Put it all together
