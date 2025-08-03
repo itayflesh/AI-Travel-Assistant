@@ -385,8 +385,8 @@ class DestinationHandler:
             return ""
         
         try:
-            # Get last 3 conversation turns for context efficiency
-            recent_messages = recent_conversation[-6:]
+            # Get last 8 conversation turns for context efficiency
+            recent_messages = recent_conversation[-8:]
             
             context_lines = ["CONVERSATION CONTEXT:"]
             for msg in recent_messages:
@@ -647,7 +647,7 @@ class DestinationHandler:
             "• Match response length to information available and strategy type",
             "• STRICTLY follow the required response format above",
             "",
-            "Generate your destination recommendation response:"
+            "Generate your destination recommendation response and keep on readable format:"
         ])
         
         # Put it all together
@@ -659,7 +659,12 @@ class DestinationHandler:
                    f"weather_used={external_relevance['use_weather']}, "
                    f"attractions_used={external_relevance['use_attractions']} "
                    f"(classifier-driven)")
-        
+
+        print(f"--------------")
+        print(f"Final destination prompt: ")
+        print(final_prompt)
+        print(f"--------------")
+
         return final_prompt
     
     def _build_fallback_prompt(self, user_query: str, global_context: List[str], 

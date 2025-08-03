@@ -84,6 +84,7 @@ class PackingHandler:
                 f"(classifier-driven)"
             )
             
+        
             return final_prompt
             
         except Exception as e:
@@ -413,8 +414,8 @@ class PackingHandler:
             return ""
         
         try:
-            # Get last 3 conversation turns for context efficiency
-            recent_messages = recent_conversation[-6:]
+            # Get last 8 conversation turns for context efficiency
+            recent_messages = recent_conversation[-8:]
             
             context_lines = ["CONVERSATION CONTEXT:"]
             for msg in recent_messages:
@@ -423,8 +424,8 @@ class PackingHandler:
                 elif "assistant_answer" in msg:
                     # Summarize long answers to keep context manageable
                     answer = msg['assistant_answer']
-                    if len(answer) > 200:
-                        answer = answer[:200] + "..."
+                    # if len(answer) > 200:
+                    #     answer = answer[:200] + "..."
                     context_lines.append(f"Assistant: {answer}")
             
             context_lines.append("")  # Empty line for separation
@@ -555,17 +556,15 @@ class PackingHandler:
         
         # Give strategic instructions based on our analysis
         prompt_parts.append("STRATEGIC RESPONSE INSTRUCTIONS:")
-        prompt_parts.append("")
-        
-        # Different thinking process based on strategy
-        prompt_parts.append("Chain-of-thought reasoning process:")
-        
+                
         if response_strategy["type"] == "question_focused":
             prompt_parts.extend([
                 "1. Analyze what critical information is missing for effective packing recommendations",
                 "2. Identify the 2-3 most important questions to ask for packing success",
                 "3. Provide a brief, encouraging response that gathers essential details",
-                "4. Focus on destination, planned activities, and luggage constraints"
+                "4. Focus on destination, planned activities, and luggage constraints",
+                "5. Maintain an answer structure that is easy to read and user-friendly."
+
             ])
         
         elif response_strategy["type"] in ["hybrid", "hybrid_with_weather"]:
@@ -573,19 +572,21 @@ class PackingHandler:
                 "1. Assess what information is available and what's missing for packing",
                 "2. Provide helpful general packing advice based on available info",
                 "3. Ask 1-2 specific questions to fill important gaps",
-                "4. Balance being helpful now while gathering more details"
+                "4. Balance being helpful now while gathering more details",
+                "5. Maintain an answer structure that is easy to read and user-friendly."
             ])
             
             if "with_weather" in response_strategy["type"]:
-                prompt_parts.append("5. Integrate current weather data naturally into packing recommendations")
-        
+                prompt_parts.append("6. Integrate current weather data naturally into packing recommendations")
+
         elif response_strategy["type"] == "recommendation_focused":
             prompt_parts.extend([
                 "1. Analyze all available trip information, activities, and constraints",
                 "2. Consider weather conditions, luggage type, and special needs",
                 "3. Provide categorized packing recommendations with clear reasoning",
                 "4. Explain why each item/category is important for their specific trip",
-                "5. Include practical packing tips and space-saving techniques"
+                "5. Include practical packing tips and space-saving techniques",
+                "6. Maintain an answer structure that is easy to read and user-friendly."
             ])
         
         else:  # detailed_packing_list
@@ -595,7 +596,8 @@ class PackingHandler:
                 "3. Include weather-appropriate clothing with layering strategies",
                 "4. Address activity-specific gear and equipment needs",
                 "5. Provide luggage organization tips and weight management strategies",
-                "6. Include travel documents, electronics, and destination-specific items"
+                "6. Include travel documents, electronics, and destination-specific items",
+                "7. Maintain an answer structure that is easy to read and user-friendly."
             ])
         
         prompt_parts.append("")
@@ -670,7 +672,7 @@ class PackingHandler:
             "• Use emojis and bullet points for easy scanning",
             "• Be encouraging and build confidence in their packing decisions",
             "",
-            "Generate your packing recommendation response:"
+            "Generate your packing recommendation response and keep on readable format:"
         ])
         
         # Put it all together
@@ -681,7 +683,12 @@ class PackingHandler:
                    f"info_quality={info_analysis['information_quality']}, "
                    f"weather_used={weather_relevance['use_weather']} "
                    f"(classifier-driven)")
-        
+
+        print(f"--------------")
+        print(f"Final packing prompt: ")
+        print(final_prompt)
+        print(f"--------------")
+
         return final_prompt
     
     def _build_fallback_prompt(self, user_query: str, global_context: List[str], 

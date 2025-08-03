@@ -431,8 +431,8 @@ class AttractionsHandler:
             return ""
         
         try:
-            # Get last 3 conversation turns for context efficiency
-            recent_messages = recent_conversation[-6:]
+            # Get last 8 conversation turns for context efficiency
+            recent_messages = recent_conversation[-8:]
             
             context_lines = ["CONVERSATION CONTEXT:"]
             for msg in recent_messages:
@@ -441,8 +441,8 @@ class AttractionsHandler:
                 elif "assistant_answer" in msg:
                     # Summarize long answers to keep context manageable
                     answer = msg['assistant_answer']
-                    if len(answer) > 200:
-                        answer = answer[:200] + "..."
+                    # if len(answer) > 200:
+                    #     answer = answer[:200] + "..."
                     context_lines.append(f"Assistant: {answer}")
             
             context_lines.append("")  # Empty line for separation
@@ -601,17 +601,15 @@ class AttractionsHandler:
         
         # Give strategic instructions based on our analysis
         prompt_parts.append("STRATEGIC RESPONSE INSTRUCTIONS:")
-        prompt_parts.append("")
         
-        # Different thinking process based on strategy
-        prompt_parts.append("Chain-of-thought reasoning process:")
         
         if response_strategy["type"] == "question_focused":
             prompt_parts.extend([
                 "1. Analyze what critical information is missing for attractions recommendations",
                 "2. Identify the 2-3 most important questions to ask",
                 "3. Provide a brief, encouraging response that gathers essential details",
-                "4. Focus on destination, available time, and activity interests"
+                "4. Focus on destination, available time, and activity interests",
+                "5. Maintain an answer structure that is easy to read and user-friendly."
             ])
         
         elif response_strategy["type"] in ["hybrid", "hybrid_with_data"]:
@@ -619,19 +617,21 @@ class AttractionsHandler:
                 "1. Assess what information is available and what's missing",
                 "2. Provide helpful attraction suggestions based on available info",
                 "3. Ask 1-2 specific questions to fill important gaps",
-                "4. Balance being helpful now while gathering more details"
+                "4. Balance being helpful now while gathering more details",
+                "5. Maintain an answer structure that is easy to read and user-friendly."
             ])
             
             if "with_data" in response_strategy["type"]:
-                prompt_parts.append("5. Integrate current attractions data naturally into recommendations")
-        
+                prompt_parts.append("6. Integrate current attractions data naturally into recommendations")
+
         elif response_strategy["type"] == "recommendation_focused":
             prompt_parts.extend([
                 "1. Analyze all available visitor information and preferences",
                 "2. Consider time constraints, interests, and accessibility needs",
                 "3. Provide 3-5 specific attraction recommendations with clear reasoning",
                 "4. Explain why each attraction matches their stated preferences",
-                "5. Include practical considerations (timing, costs, accessibility)"
+                "5. Include practical considerations (timing, costs, accessibility)",
+                "6. Maintain an answer structure that is easy to read and user-friendly."
             ])
         
         else:  # detailed_planning
@@ -640,7 +640,8 @@ class AttractionsHandler:
                 "2. Provide detailed attraction recommendations with specific rationale",
                 "3. Include timing suggestions, costs, and logistical considerations",
                 "4. Suggest optimal routes, must-see highlights, and insider tips",
-                "5. Address any special requirements or accessibility needs mentioned"
+                "5. Address any special requirements or accessibility needs mentioned",
+                "6. Maintain an answer structure that is easy to read and user-friendly."
             ])
         
         prompt_parts.append("")
@@ -714,7 +715,7 @@ class AttractionsHandler:
             "• Use formatting (bullets, emojis) for easy reading when appropriate",
             "• Prioritize attractions based on stated interests and time available",
             "",
-            "Generate your attractions recommendation response:"
+            "Generate your attractions recommendation response and keep on readable format:"
         ])
         
         # Put it all together
@@ -726,7 +727,12 @@ class AttractionsHandler:
                    f"weather_used={external_relevance['use_weather']}, "
                    f"attractions_used={external_relevance['use_attractions']} "
                    f"(classifier-driven)")
-        
+
+        print(f"--------------")
+        print(f"Final attraction prompt: ")
+        print(final_prompt)
+        print(f"--------------")
+
         return final_prompt
     
     def _build_fallback_prompt(self, user_query: str, global_context: List[str], 
