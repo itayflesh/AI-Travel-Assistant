@@ -341,7 +341,7 @@ class GlobalContextStorage:
         self.redis_client.lpush(f"{self.session_key}:conversation_order", query_key)
         logger.info(f"Saved user query: {query_data['type']}")
     
-    def save_assistant_answer(self, answer: str):
+    def save_assistant_answer(self, answer: str, classification_result: Dict[str, Any] = None):
         """Save our response to the user"""
         timestamp = datetime.now(timezone.utc).isoformat()
         answer_key = f"{self.session_key}:assistant_answer:{timestamp}"
@@ -350,6 +350,13 @@ class GlobalContextStorage:
             "timestamp": timestamp,
             "assistant_answer": answer
         }
+        
+        # Include classification info for external data display
+        if classification_result:
+            answer_record["classification"] = {
+                "external_data_needed": classification_result.get("external_data_needed", False),
+                "external_data_type": classification_result.get("external_data_type", "none")
+            }
         
         self.redis_client.set(answer_key, json.dumps(answer_record))
         self.redis_client.lpush(f"{self.session_key}:conversation_order", answer_key)

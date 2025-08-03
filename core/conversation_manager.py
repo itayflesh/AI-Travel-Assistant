@@ -429,7 +429,7 @@ Please provide helpful travel advice based on the available information."""
         # Step 6: Save the assistant's response
         if response:
             try:
-                self.storage.save_assistant_answer(response)
+                self.storage.save_assistant_answer(response, classification_result)
                 logger.info(f"Used specialized {classification_result['type']} handler")
                 
             except Exception as e:
