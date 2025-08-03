@@ -110,7 +110,7 @@ class QueryClassifier:
         conversation_context = ""
         if conversation_history and len(conversation_history) > 0:
             # Keep it recent to avoid overwhelming the prompt
-            recent_messages = conversation_history[-6:]
+            recent_messages = conversation_history[-8:]
             
             conversation_context = "\nCONVERSATION CONTEXT:\n"
             for msg in recent_messages:
