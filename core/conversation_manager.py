@@ -47,12 +47,12 @@ class ConversationManager:
     
 
     def route_to_handler(self, query_type: str, user_query: str, 
-                        global_context: List[str], type_specific_context: List[str],
-                        external_data: Dict[str, Any], recent_conversation: List[Dict[str, Any]]) -> str:
+                    global_context: List[str], type_specific_context: List[str],
+                    external_data: Dict[str, Any], recent_conversation: List[Dict[str, Any]], 
+                    classification_result: Dict[str, Any]) -> str:
         """
         Send the query to the right handler to build a specialized prompt.
-        
-        """
+                """
         try:
             # Get the appropriate handler
             handler = self.handlers.get(query_type)
@@ -93,13 +93,25 @@ class ConversationManager:
                             handler_specific_context.append(item)
             
             # Let the handler build the specialized prompt
-            engineered_prompt = handler.build_final_prompt(
-                user_query=user_query,
-                global_context=global_context,
-                type_specific_context=handler_specific_context,
-                external_data=external_data,
-                recent_conversation=recent_conversation
-            )
+            # FOR DESTINATION HANDLER: Pass classification_result
+            if query_type == "destination_recommendations":
+                engineered_prompt = handler.build_final_prompt(
+                    user_query=user_query,
+                    global_context=global_context,
+                    type_specific_context=handler_specific_context,
+                    external_data=external_data,
+                    recent_conversation=recent_conversation,
+                    classification_result=classification_result  # NEW: Pass classification result
+                )
+            else:
+                # Other handlers use the original signature
+                engineered_prompt = handler.build_final_prompt(
+                    user_query=user_query,
+                    global_context=global_context,
+                    type_specific_context=handler_specific_context,
+                    external_data=external_data,
+                    recent_conversation=recent_conversation
+                )
             
             logger.info(f"Successfully routed to {query_type} handler, prompt length: {len(engineered_prompt)} chars")
             return engineered_prompt
@@ -107,6 +119,7 @@ class ConversationManager:
         except Exception as e:
             logger.error(f"Error routing to handler for {query_type}: {str(e)}")
             return self._build_fallback_prompt(user_query, global_context, type_specific_context, external_data)
+
     
     def _build_fallback_prompt(self, user_query: str, global_context: List[str], 
                               type_specific_context: List[str], external_data: Dict[str, Any]) -> str:
@@ -327,8 +340,7 @@ Please provide helpful travel advice based on the available information."""
         """
         The main workflow that handles a user's message from start to finish.
         
-        classify the query, fetch any external data needed, route to the right handler, generate a response, and save everything.
-        
+        Now passes classification_result to route_to_handler.
         """
         classification_result = None
         response = None
@@ -410,7 +422,8 @@ Please provide helpful travel advice based on the available information."""
                 global_context=global_context,
                 type_specific_context=type_specific_context,
                 external_data=external_data,
-                recent_conversation=recent_conversation
+                recent_conversation=recent_conversation,
+                classification_result=classification_result  
             )
             
             # Generate the actual response

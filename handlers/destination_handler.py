@@ -35,15 +35,11 @@ class DestinationHandler:
     
     def build_final_prompt(self, user_query: str, global_context: List[str], 
                           type_specific_context: List[str], external_data: Dict[str, Any],
-                          recent_conversation: List[Dict[str, Any]]) -> str:
+                          recent_conversation: List[Dict[str, Any]], 
+                          classification_result: Dict[str, Any]) -> str:
         """
-        build a smart prompt based on what we know and what we need.
+        Build a smart prompt based on what we know and what we need.
         
-        The steps mirror how a human travel expert would think:
-        1. What do I know vs what do I need to know?
-        2. Do I have current data that would be helpful?
-        3. What's the best way to respond given the situation?
-        4. How do I craft a response that feels natural and helpful?
         """
         try:
             # Figure out how much useful info we actually have
@@ -51,9 +47,9 @@ class DestinationHandler:
                 user_query, global_context, type_specific_context
             )
             
-            # Decide if our external data is actually useful here
+            # Trust the classifier's decision about external data
             external_relevance = self._assess_external_data_relevance(
-                external_data, global_context, user_query
+                external_data, classification_result
             )
             
             # Pick the best response strategy based on what we know
@@ -85,7 +81,8 @@ class DestinationHandler:
                 f"strategy={response_strategy['type']}, "
                 f"completeness={info_analysis['completeness_score']:.2f}, "
                 f"weather_used={external_relevance['use_weather']}, "
-                f"attractions_used={external_relevance['use_attractions']}"
+                f"attractions_used={external_relevance['use_attractions']} "
+                f"(trusted classifier decision)"
             )
             
             return final_prompt
@@ -230,10 +227,10 @@ class DestinationHandler:
         return info
     
     def _assess_external_data_relevance(self, external_data: Dict[str, Any], 
-                                      global_context: List[str], user_query: str) -> Dict[str, Any]:
+                                      classification_result: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Decide if our external data is actually useful here.
-     
+        Trust the classifier's decision about external data completely.
+        Only verify that the data actually exists and has content.
         """
         relevance = {
             "weather_relevant": False,
@@ -245,66 +242,72 @@ class DestinationHandler:
         }
         
         try:
-            # Do we even have external data?
-            has_weather = "weather" in external_data and external_data["weather"].get("success")
-            has_attractions = "attractions" in external_data and external_data["attractions"].get("success")
+            # Get classifier's decisions
+            external_data_needed = classification_result.get("external_data_needed", False)
+            external_data_type = classification_result.get("external_data_type", "none")
             
-            # Check if weather data would be useful
-            if has_weather:
-                weather_relevant_indicators = [
-                    "weather" in user_query.lower(),
-                    "temperature" in user_query.lower(),
-                    "climate" in user_query.lower(),
-                    "season" in user_query.lower(),
-                    any("travel_dates:" in item and self._is_near_term_date(item) for item in global_context)
-                ]
+            logger.info(f"Classifier decision: external_data_needed={external_data_needed}, type={external_data_type}")
+            
+            if not external_data_needed:
+                relevance["weather_reason"] = "Classifier determined no external data needed"
+                relevance["attractions_reason"] = "Classifier determined no external data needed"
+                logger.info("Trusting classifier: no external data needed")
+                return relevance
+            
+            # Classifier says we need external data - check what type and verify availability
+            
+            # Check weather data
+            if external_data_type in ["weather", "both"]:
+                has_weather = "weather" in external_data and external_data["weather"].get("success")
                 
-                if any(weather_relevant_indicators):
-                    relevance["weather_relevant"] = True
-                    relevance["use_weather"] = True
-                    relevance["weather_reason"] = "User asked about weather or trip is near-term"
+                if has_weather:
+                    # Verify data quality
+                    weather_data = external_data["weather"]
+                    current_temp = weather_data.get('current_weather', {}).get('temperature', 'N/A')
+                    forecast_entries = len(weather_data.get('forecast', []))
+                    
+                    if current_temp != 'N/A' and forecast_entries > 0:
+                        relevance["weather_relevant"] = True
+                        relevance["use_weather"] = True
+                        relevance["weather_reason"] = f"Classifier requested weather data - available and valid"
+                        logger.info("Using weather data as requested by classifier")
+                    else:
+                        relevance["weather_reason"] = f"Classifier requested weather data but quality is limited"
+                        logger.warning("Weather data requested but quality is limited")
                 else:
-                    relevance["weather_reason"] = "Weather not relevant - no weather question and not near-term trip"
+                    relevance["weather_reason"] = f"Classifier requested weather data but none available"
+                    logger.warning("Weather data requested but not available")
             
-            # Check if attractions data would be useful
-            if has_attractions:
-                # Do we already know where they want to go?
-                has_destination = any(
-                    item.lower().startswith("destination:") for item in global_context
-                ) or "destination" in [item.split(":")[0].strip().lower() for item in global_context if ":" in item]
+            # Check attractions data  
+            if external_data_type in ["attractions", "both"]:
+                has_attractions = "attractions" in external_data and external_data["attractions"].get("success")
                 
-                attractions_query_indicators = [
-                    "things to do" in user_query.lower(),
-                    "activities" in user_query.lower(),
-                    "attractions" in user_query.lower(),
-                    "see" in user_query.lower() and "what" in user_query.lower()
-                ]
-                
-                if has_destination and any(attractions_query_indicators):
-                    relevance["attractions_relevant"] = True
-                    relevance["use_attractions"] = True
-                    relevance["attractions_reason"] = "Destination known and user asking about activities"
-                elif has_destination:
-                    relevance["attractions_relevant"] = True
-                    relevance["use_attractions"] = True
-                    relevance["attractions_reason"] = "Destination known - attractions can inform recommendation"
+                if has_attractions:
+                    # Verify data quality
+                    attractions_data = external_data["attractions"]
+                    total_found = attractions_data.get("total_found", 0)
+                    
+                    if total_found > 0:
+                        relevance["attractions_relevant"] = True
+                        relevance["use_attractions"] = True
+                        relevance["attractions_reason"] = f"Classifier requested attractions data - {total_found} attractions available"
+                        logger.info(f"Using attractions data as requested by classifier ({total_found} found)")
+                    else:
+                        relevance["attractions_reason"] = f"Classifier requested attractions data but none found"
+                        logger.warning("Attractions data requested but none found")
                 else:
-                    relevance["attractions_reason"] = "No established destination - attractions not relevant yet"
+                    relevance["attractions_reason"] = f"Classifier requested attractions data but none available"
+                    logger.warning("Attractions data requested but not available")
             
-            logger.info(f"External data relevance: weather={relevance['use_weather']}, attractions={relevance['use_attractions']}")
+            # Log final decision
+            logger.info(f"Final external data usage: weather={relevance['use_weather']}, attractions={relevance['use_attractions']}")
             
         except Exception as e:
             logger.error(f"Error assessing external data relevance: {str(e)}")
+            relevance["weather_reason"] = f"Error in relevance assessment: {str(e)}"
+            relevance["attractions_reason"] = f"Error in relevance assessment: {str(e)}"
         
         return relevance
-    
-    def _is_near_term_date(self, date_item: str) -> bool:
-        """Check if they're traveling soon (within 5 days) so weather data is actually useful"""
-        try:
-            near_term_indicators = ["this week", "coming week", "coming days", "tomorrow", "this weekend"]
-            return any(indicator in date_item.lower() for indicator in near_term_indicators)
-        except:
-            return False
     
     def _determine_response_strategy(self, info_analysis: Dict[str, Any], 
                                    external_relevance: Dict[str, Any],
@@ -493,7 +496,7 @@ class DestinationHandler:
                 prompt_parts.append(f"• {item}")
             prompt_parts.append("")
         
-        # Include external data if it's actually useful
+        # Include external data based purely on classifier's decision
         if external_relevance["use_weather"] and "weather" in external_data:
             weather = external_data["weather"]
             prompt_parts.append("CURRENT WEATHER DATA:")
@@ -522,7 +525,7 @@ class DestinationHandler:
             prompt_parts.append("CURRENT ATTRACTIONS DATA:")
             prompt_parts.append(f"• Destination: {attractions.get('destination', 'Unknown')}")
             prompt_parts.append(f"• Available attractions: {attractions.get('total_found', 0)} found")
-            prompt_parts.append(f"• Relevance: {external_relevance['attractions_reason']}")
+            prompt_parts.append(f"• Source: {external_relevance['attractions_reason']}")
             prompt_parts.append("")
         
         # Give strategic instructions based on our analysis
@@ -602,18 +605,18 @@ class DestinationHandler:
         
         prompt_parts.append("")
         
-        # Instructions on using external data
+        # Instructions on using external data - now purely classifier-driven
         if external_relevance["use_weather"] or external_relevance["use_attractions"]:
-            prompt_parts.append("External data usage:")
+            prompt_parts.append("External data usage :")
             if external_relevance["use_weather"]:
-                prompt_parts.append("• USE the weather data provided - it's current and relevant")
+                prompt_parts.append("• USE the weather data provided - classifier determined it's relevant")
                 prompt_parts.append("• Integrate weather insights naturally into recommendations")
             if external_relevance["use_attractions"]:
-                prompt_parts.append("• USE the attractions data provided - it's current and relevant")
+                prompt_parts.append("• USE the attractions data provided - classifier determined it's relevant")
                 prompt_parts.append("• Reference specific attractions when recommending destinations")
         else:
             prompt_parts.append("External data usage:")
-            prompt_parts.append("• Rely on your extensive knowledge - external data not relevant for this query")
+            prompt_parts.append("• Classifier determined no external data needed - rely on your extensive knowledge")
             prompt_parts.append("• Do not reference weather or attraction data that may be shown above")
         
         prompt_parts.append("")
@@ -637,7 +640,8 @@ class DestinationHandler:
         logger.info(f"Built strategic prompt: strategy={response_strategy['type']}, "
                    f"info_quality={info_analysis['information_quality']}, "
                    f"weather_used={external_relevance['use_weather']}, "
-                   f"attractions_used={external_relevance['use_attractions']}")
+                   f"attractions_used={external_relevance['use_attractions']} "
+                   f"(classifier-driven)")
         
         return final_prompt
     
