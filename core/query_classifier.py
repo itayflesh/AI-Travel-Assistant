@@ -311,6 +311,7 @@ class QueryClassifier:
         # Figure out if we need external data
         external_data_needed = False
         external_data_reason = "Pattern matching suggests no external data needed"
+        external_data_type = "none"
         
         weather_matches = sum(1 for pattern in self.external_data_patterns["weather_needed"] 
                             if pattern in query_lower)
@@ -318,17 +319,26 @@ class QueryClassifier:
         location_matches = sum(1 for pattern in self.external_data_patterns["location_specific"]
                              if pattern in query_lower)
         
-        if weather_matches > 0 and best_type == "packing_suggestions":
+        if weather_matches > 0 :
             external_data_needed = True
-            external_data_reason = "Packing query detected with weather-related terms"
-        elif location_matches > 0 and best_type == "local_attractions":
+            external_data_reason = "Weather query detected with weather-specific terms"
+            external_data_type = "weather"
+        if location_matches > 0 :
             external_data_needed = True
-            external_data_reason = "Attractions query detected with location-specific terms"
+            external_data_reason = "Location-specific query detected with location terms"
+            if external_data_type == "none":
+                external_data_type = "attractions"
+            if external_data_type == "weather":
+                external_data_type = "both"
+                external_data_reason = "Weather and location-specific query detected"
+
+
         
         result = {
             "type": best_type,
             "external_data_needed": external_data_needed,
             "external_data_reason": external_data_reason,
+            "external_data_type": external_data_type,
             "confidence": best_score,
             "all_scores": type_scores,
             "reasoning": f"Pattern matching: {type_scores[best_type]['matches']}",
@@ -405,7 +415,7 @@ class QueryClassifier:
             else:
                 final_result["external_data_needed"] = pattern_result["external_data_needed"]
                 final_result["external_data_reason"] = pattern_result["external_data_reason"]
-                final_result["external_data_type"] = "none"
+                final_result["external_data_type"] = pattern_result["external_data_type"]
             
             # Only Gemini can extract the detailed user preferences
             final_result["key_Global_information"] = gemini_result.get("key_Global_information", [])
@@ -470,7 +480,7 @@ class QueryClassifier:
             final_result = {
                 "type": pattern_result["type"],
                 "external_data_needed": pattern_result["external_data_needed"],
-                "external_data_type": "none",
+                "external_data_type": pattern_result["external_data_type"],
                 "key_Global_information": [],
                 "key_specific_destination_recommendations_information": [],
                 "key_specific_packing_suggestions_information": [],

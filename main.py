@@ -232,8 +232,6 @@ def display_context_sidebar(storage):
     except Exception as e:
         st.error(f"Error loading context: {str(e)}")
 
-# REMOVED: get_external_data_info function entirely
-
 def display_chat_message(message, is_user=True):
     """Display a single chat message with proper styling - REMOVED external_info parameter."""
     if is_user:
