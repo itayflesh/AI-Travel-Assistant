@@ -181,18 +181,7 @@ class GlobalContextStorage:
                 "external_data": {},
                 "query_type": query_type
             }
-            
-            # Add relevant external data based on what type of question this is
-            if query_type == "packing_suggestions":
-                weather_data = self.get_external_data("weather_external_data")
-                if weather_data:
-                    complete_context["external_data"]["weather"] = weather_data
-                    
-            elif query_type == "local_attractions":
-                attractions_data = self.get_external_data("attractions_external_data")
-                if attractions_data:
-                    complete_context["external_data"]["attractions"] = attractions_data
-            
+                
             logger.info(f"Built complete context for {query_type}: {len(global_context)} global + {len(type_specific_context)} type-specific items")
             return complete_context
             
@@ -270,48 +259,6 @@ class GlobalContextStorage:
         except Exception as e:
             logger.error(f"Error getting storage stats: {str(e)}")
             return {"error": str(e)}
-    
-    def parse_context_for_display(self, context_array: List[str]) -> Dict[str, str]:
-        """
-        Convert our "key: value" strings into a dict for easier display in the UI.
-        
-        """
-        parsed = {}
-        for item in context_array:
-            if ":" in item:
-                key, value = item.split(":", 1)
-                parsed[key.strip()] = value.strip()
-            else:
-                # Handle items that don't follow the key:value format
-                parsed[f"info_{len(parsed)}"] = item.strip()
-        
-        return parsed
-    
-    def search_context_by_key(self, key: str, query_type: Optional[str] = None) -> List[str]:
-        """
-        Find all the info we have about a specific topic across both global and type-specific storage.
-
-        """
-        matches = []
-        
-        try:
-            # Search global context
-            global_context = self._get_global_context()
-            for item in global_context:
-                if item.lower().startswith(f"{key.lower()}:"):
-                    matches.append(item)
-            
-            # Search type-specific context if requested
-            if query_type and query_type in self.valid_query_types:
-                type_context = self._get_type_specific_context(query_type)
-                for item in type_context:
-                    if item.lower().startswith(f"{key.lower()}:"):
-                        matches.append(item)
-                        
-        except Exception as e:
-            logger.error(f"Error searching context for key '{key}': {str(e)}")
-        
-        return matches
     
     def save_user_query(self, query_data: Dict[str, Any]):
         """Save a user's question along with all the classification metadata"""
