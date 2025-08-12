@@ -10,8 +10,7 @@ logger = logging.getLogger(__name__)
 
 class AttractionsHandler:
     """
-    prompt engineering for local attractions and activities recommendations.
-    
+    prompt engineering for local attractions and activities recommendations. 
     
     """
     
@@ -365,7 +364,6 @@ class AttractionsHandler:
         try:
             quality = info_analysis["information_quality"]
             completeness = info_analysis["completeness_score"]
-            has_critical_gaps = len(info_analysis["critical_gaps"]) > 0
             has_attractions_data = external_relevance["use_attractions"]
             
             # Pick strategy based on how much we know
